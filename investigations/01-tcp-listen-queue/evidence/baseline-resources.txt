@@ -1,0 +1,12 @@
+2026-10-06T20:09:41+09:00
+top - 20:09:41 up 1 day, 37 min,  4 users,  load average: 0.00, 0.00, 0.00
+Tasks: 109 total,   1 running, 108 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.0 sy,  0.0 ni,100.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :   1955.2 total,   1027.9 free,    265.3 used,    752.8 buff/cache     
+MiB Swap:      0.0 total,      0.0 free,      0.0 used.   1689.9 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 root      20   0   22244  12772   8908 S   0.0   0.6   0:06.60 systemd
+               total        used        free      shared  buff/cache   available
+Mem:           1.9Gi       265Mi       1.0Gi       1.1Mi       752Mi       1.7Gi
+Swap:             0B          0B          0B

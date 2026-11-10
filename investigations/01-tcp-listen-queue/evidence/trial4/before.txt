@@ -1,0 +1,7 @@
+=== Time ===
+2026-11-10T00:03:24+09:00
+=== HTTP Server ===
+LISTEN 0      128          0.0.0.0:8080      0.0.0.0:*    users:(("python3",pid=22467,fd=3))
+=== TCP Listen Counters ===
+ListenOverflows 0
+ListenDrops 0
