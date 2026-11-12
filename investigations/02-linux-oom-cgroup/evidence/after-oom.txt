@@ -1,0 +1,8 @@
+--- VM ---
+ 16:18:09 up 1 day,  1:43,  2 users,  load average: 0.00, 0.00, 0.00
+--- MEMORY ---
+               total        used        free      shared  buff/cache   available
+Mem:           1.9Gi       244Mi       924Mi       1.1Mi       882Mi       1.7Gi
+Swap:             0B          0B          0B
+--- OOM COUNTER ---
+oom_kill 1

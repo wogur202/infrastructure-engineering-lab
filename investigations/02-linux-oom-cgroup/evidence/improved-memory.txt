@@ -1,0 +1,14 @@
+2026-11-12T12:39:00+09:00
+--- CURRENT ---
+139808768
+--- PEAK ---
+140034048
+--- LIMIT ---
+268435456
+--- EVENTS ---
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0

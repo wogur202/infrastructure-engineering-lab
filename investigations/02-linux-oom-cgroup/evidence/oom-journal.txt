@@ -1,0 +1,4 @@
+2026-11-11T15:57:58+09:00 tcp-lab systemd[1]: Started oom-lab.service - /usr/bin/python3 -u /home/ubuntu/linux-oom-cgroup/memory_hog.py --mb 128 --step 16 --interval 0.2.
+2026-11-11T15:57:59+09:00 tcp-lab systemd[1]: oom-lab.service: A process of this unit has been killed by the OOM killer.
+2026-11-11T15:57:59+09:00 tcp-lab systemd[1]: oom-lab.service: Main process exited, code=killed, status=9/KILL
+2026-11-11T15:57:59+09:00 tcp-lab systemd[1]: oom-lab.service: Failed with result 'oom-kill'.

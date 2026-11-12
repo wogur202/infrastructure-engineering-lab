@@ -1,0 +1,7 @@
+2026-11-11T15:41:14+09:00
+               total        used        free      shared  buff/cache   available
+Mem:           1.9Gi       244Mi       934Mi       1.1Mi       872Mi       1.7Gi
+Swap:             0B          0B          0B
+--- SWAP ---
+--- KERNEL OOM COUNTER ---
+oom_kill 0
