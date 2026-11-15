@@ -1,0 +1,11 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0* Host web-svc.dns-lab.svc.cluster.local:80 was resolved.
+* IPv6: (none)
+* IPv4: 10.96.157.6
+*   Trying 10.96.157.6:80...
+* connect to 10.96.157.6 port 80 from 10.244.0.11 port 47366 failed: Connection refused
+* Failed to connect to web-svc.dns-lab.svc.cluster.local port 80 after 1 ms: Could not connect to server
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+* closing connection #0
+curl: (7) Failed to connect to web-svc.dns-lab.svc.cluster.local port 80 after 1 ms: Could not connect to server
