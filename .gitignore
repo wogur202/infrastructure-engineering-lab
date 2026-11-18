@@ -11,3 +11,28 @@ evidence/server-backlog128.log
 
 **/evidence/server.log
 **/evidence/server-backlog128.log
+
+# Terraform local files
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+
+# Local credentials
+.env
+.env.*
+*.pem
+*.key
+
+# Additional Terraform plans and local CLI credentials
+*.plan
+tfplan.*
+.terraform.tfstate.lock.info
+.terraformrc
+terraform.rc
+.aws/

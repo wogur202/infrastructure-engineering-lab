@@ -1,0 +1,31 @@
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
+
+Terraform will perform the following actions:
+
+  # aws_security_group.drift_lab will be created
+  + resource "aws_security_group" "drift_lab" {
+      + arn                    = (known after apply)
+      + description            = "Security group for Terraform drift experiment"
+      + egress                 = (known after apply)
+      + id                     = (known after apply)
+      + ingress                = (known after apply)
+      + name                   = "terraform-drift-lab"
+      + name_prefix            = (known after apply)
+      + owner_id               = (known after apply)
+      + region                 = "ap-northeast-2"
+      + revoke_rules_on_delete = false
+      + tags                   = {
+          + "Name"    = "terraform-drift-lab"
+          + "Project" = "portfolio-a"
+        }
+      + tags_all               = {
+          + "Name"    = "terraform-drift-lab"
+          + "Project" = "portfolio-a"
+        }
+      + vpc_id                 = (known after apply)
+    }
+
+Plan: 1 to add, 0 to change, 0 to destroy.

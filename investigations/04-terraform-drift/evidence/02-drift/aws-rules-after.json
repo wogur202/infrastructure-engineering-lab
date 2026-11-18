@@ -1,0 +1,17 @@
+{
+    "SecurityGroupRules": [
+        {
+            "SecurityGroupRuleId": "sgr-00791014931f34dc1",
+            "GroupId": "sg-06bc123d398108c1f",
+            "GroupOwnerId": "AWS_ACCOUNT_ID",
+            "IsEgress": false,
+            "IpProtocol": "tcp",
+            "FromPort": 8080,
+            "ToPort": 8080,
+            "CidrIpv4": "EXPERIMENT_CLIENT_IP/32",
+            "Description": "manual-drift-test",
+            "Tags": [],
+            "SecurityGroupRuleArn": "arn:aws:ec2:ap-northeast-2:AWS_ACCOUNT_ID:security-group-rule/sgr-00791014931f34dc1"
+        }
+    ]
+}
