@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spot-http
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: spot-http
+  template:
+    metadata:
+      labels:
+        app: spot-http
+    spec:
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: spot-http
+      containers:
+        - name: spot-http
+          image: spot-http:v2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spot-http-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: spot-http
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP

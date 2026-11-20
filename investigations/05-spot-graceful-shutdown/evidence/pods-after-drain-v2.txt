@@ -1,0 +1,3 @@
+NAME                        READY   STATUS    RESTARTS   AGE    IP           NODE               NOMINATED NODE   READINESS GATES
+spot-http-644dfc7c8-mrh4s   1/1     Running   0          3m4s   10.244.1.7   spot-lab-worker2   <none>           <none>
+spot-http-644dfc7c8-w6mlk   1/1     Running   0          34m    10.244.1.5   spot-lab-worker2   <none>           <none>

@@ -1,0 +1,6 @@
+2026-11-20T07:47:42.240193+00:00 HTTP server started on port 8080
+2026-11-20T08:08:42.913235+00:00 request started
+2026-11-20T08:08:44.008272+00:00 SIGTERM received
+127.0.0.1 - - [20/Nov/2026 08:08:45] "GET / HTTP/1.1" 200 -
+2026-11-20T08:08:45.914840+00:00 request completed
+2026-11-20T08:08:45.915079+00:00 graceful shutdown completed

@@ -1,0 +1,4 @@
+OK
+
+HTTP 200 | 3.007115s
+pod "http-baseline" deleted from default namespace

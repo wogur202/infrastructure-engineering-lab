@@ -1,0 +1,5 @@
+node/spot-lab-worker cordoned
+Warning: ignoring DaemonSet-managed Pods: kube-system/kindnet-7rbd9, kube-system/kube-proxy-7dmzh
+evicting pod default/spot-http-644dfc7c8-r759l
+pod/spot-http-644dfc7c8-r759l evicted
+node/spot-lab-worker drained

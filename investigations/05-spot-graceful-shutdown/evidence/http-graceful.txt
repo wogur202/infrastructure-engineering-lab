@@ -1,0 +1,4 @@
+OK
+
+HTTP 200 | 4.007524s
+curl exit: 0
