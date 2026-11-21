@@ -1,21 +1,82 @@
-# STEP 06. AWS 네트워크 구축과 EKS 배포 준비
+# STEP 06. AWS EKS 기반 API 배포와 장애 복구 검증
 
-로컬 Kubernetes 실습에서 AWS EKS로 넘어가기 위해 VPC, 서브넷, 라우팅과 IAM 역할을 Terraform으로 구성했다. 이 문서는 **EKS 클러스터는 생성됐지만 Node Group 생성이 권한 오류로 중단된 중간 기록**이다. 워커 노드는 아직 생성하지 못했다.
+Terraform으로 AWS 서울 리전에 네트워크와 EKS를 구축하고, Private Subnet의 Python API를 ALB에 연결했다. 이후 실제 Pod를 삭제하면서 외부 HTTP 응답과 자동 복구 과정을 관측했다.
 
-## 1. 현재 진행 상태
+이번 실험에서는 **Terraform State, AWS 리소스 상태, Kubernetes 상태, 외부 HTTP 응답**을 각각 확인했다. 도구 하나에서 정상이라고 표시되는 것만으로 서비스 전체가 정상이라고 판단하지 않았다.
 
-2026-11-21 실습 기준이다.
+## 1. 최종 구축 상태
 
-| 구간 | 결과 | 확인 범위 |
-| --- | --- | --- |
-| 네트워크 | 15개 리소스 배포 완료 | AWS API로 NAT, 서브넷, 라우팅, EIP 연결 확인 |
-| IAM | 역할 2개와 정책 연결 4개 배포 완료 | 역할 및 연결 정책을 AWS API로 조회 |
-| 기존 구성 | 네트워크·IAM 21개 유지 | EKS 코드 추가 전 Plan에서 `No changes`, 종료 코드 0 |
-| EKS Cluster | 생성 완료 | AWS API에서 `ACTIVE`, Kubernetes `1.36` 확인 |
-| Node Group | 생성 실패 | `iam:PassRole` 거부, AWS Node Group 목록은 비어 있음 |
-| 애플리케이션 | 미배포 | kubectl 연결, 실제 패킷 통신, API 응답은 미검증 |
+| 구성 | 실제 결과 |
+| --- | --- |
+| 리전 | `ap-northeast-2` |
+| 네트워크 | VPC `10.20.0.0/16`, Public 2개·Private 2개 |
+| 외부 경로 | IGW, 단일 NAT Gateway |
+| EKS | `aegis-eks`, Kubernetes 1.36 |
+| Worker Node | `m7i-flex.large` 2개, 서로 다른 AZ, Ready |
+| 애플리케이션 | Python HTTP API 1.0.0, Deployment 2 Replicas |
+| 이미지 저장 | ECR `aegis-api`, AMD64 이미지 |
+| 외부 진입 | Internet-facing ALB, IP Target |
+| Controller 인증 | IAM OIDC Provider + IRSA |
+| 외부 API | `/healthz`, `/readyz`, `/api/info` HTTP 200 |
+| 장애 실험 | Pod 1개 삭제, 외부 HTTP 90/90 성공 |
+| Terraform 최종 검사 | `No changes` (종료 코드 0) |
 
-현재 State에는 기존 21개와 클러스터 1개가 등록돼 있다. Plan 성공은 실제 생성 권한, EC2 용량 확보나 Kubernetes 워커의 정상 동작까지 보장하지 않는다.
+[아키텍처 원본](diagrams/architecture.mmd) · [장애 복구 타임라인](evidence/recovery/recovery-timeline.svg)
+
+아래 2~5장은 네트워크와 IAM을 구축하던 **당시의 문제와 복구 과정**을 보존한 기록이다. 이후 실제 배포 완료 결과는 6장부터 정리했다.
+
+## 아키텍처
+
+```mermaid
+flowchart TB
+    USER["External Client"]
+
+    subgraph AWS["AWS · ap-northeast-2"]
+        ECR["Amazon ECR<br/>aegis-api:1.0.0"]
+
+        subgraph VPC["VPC · 10.20.0.0/16"]
+            IGW["Internet Gateway"]
+
+            subgraph PUBLIC["Public Subnets"]
+                ALB["Application Load Balancer<br/>HTTP :80"]
+                NAT["NAT Gateway · AZ-a"]
+            end
+
+            subgraph EKS["EKS · aegis-eks"]
+                SVC["Kubernetes Service<br/>ClusterIP :8080"]
+
+                subgraph AZA["AZ-a · Private 10.20.11.0/24"]
+                    PODA["Python API Pod A<br/>:8080"]
+                end
+
+                subgraph AZC["AZ-c · Private 10.20.12.0/24"]
+                    PODB["Python API Pod B<br/>:8080"]
+                end
+            end
+        end
+    end
+
+    USER -->|"HTTP · allowed IPv4 /32"| IGW
+    IGW --> ALB
+    ALB -->|"IP targets · :8080"| PODA
+    ALB -->|"IP targets · :8080"| PODB
+
+    SVC -.-> PODA
+    SVC -.-> PODB
+    KUBELET["Worker Node kubelet<br/>ECR image pull"]
+    KUBELET -.->|"Pull image"| ECR
+    PODA -.->|"Outbound"| NAT
+    PODB -.->|"Cross-AZ outbound"| NAT
+    NAT --> IGW
+
+    classDef frontend fill:#eaf2fc,stroke:#4778ac,color:#243b56
+    classDef workload fill:#e8f5ee,stroke:#43876d,color:#245340
+    classDef network fill:#f5f1e9,stroke:#a58c62,color:#55462b
+
+    class USER,ALB frontend
+    class PODA,PODB,SVC workload
+    class IGW,NAT,ECR network
+```
 
 ## 2. 네트워크 설계
 
@@ -78,98 +139,152 @@ Terraform 실행 사용자의 네트워크 권한과 EKS 관리 권한을 분리
 
 역할 관리 정책을 사용자 인라인 정책으로 추가하려다 기존 인라인 정책과 합산한 2,048자 제한에 걸렸다. JSON 문법 오류는 아니었다. 기존 정책을 삭제하거나 관리자 권한으로 바꾸는 대신, 같은 JSON을 고객 관리형 `AegisEKSIAMRoleAccess` 정책으로 생성해 연결했다.
 
-정책 시뮬레이터에서는 지정한 역할 ARN을 사용해 `CreateRole`, `AttachRolePolicy`, `DeleteRole`의 허용을 확인했다. 정책 연결 검사에는 `iam:PolicyARN` 조건도 입력했다. 이후 실제 역할 2개와 정책 연결 4개를 배포하고 AWS API로 조회했다. `PassRole`과 서비스 연결 역할을 이용한 실제 EKS 생성은 아직 검증하지 않았다.
+정책 시뮬레이터에서는 지정한 역할 ARN을 사용해 `CreateRole`, `AttachRolePolicy`, `DeleteRole`의 허용을 확인했다. 정책 연결 검사에는 `iam:PolicyARN` 조건도 입력했다. 이후 실제 역할 2개와 정책 연결 4개를 배포하고 AWS API로 조회했다. 당시에는 `PassRole`과 서비스 연결 역할을 이용한 실제 생성까지 검증하지 못했으나, 이후 Node Group 구축 과정에서 추가 권한 문제를 해결했다.
 
-현재 EC2/EKS 관리 정책에는 서울 리전 조건이 있지만 일부 작업의 리소스 범위가 `*`다. 모든 권한이 리소스 단위 최소 권한으로 완성됐다고 설명하지 않는다. 사용자 정책은 콘솔에서 준비했으며 [iam.tf](terraform/iam.tf)가 관리하는 대상은 서비스 역할과 정책 연결이다.
+당시 구성한 EC2/EKS 관리 정책에는 서울 리전 조건이 있지만 일부 작업의 리소스 범위가 `*`다. 모든 권한이 리소스 단위 최소 권한으로 완성됐다고 설명하지 않는다. 사용자 정책은 콘솔에서 준비했으며 [iam.tf](terraform/iam.tf)가 관리하는 대상은 서비스 역할과 정책 연결이다.
 
-## 6. EKS 배포 계획
 
-| 항목 | 코드에 정의한 값 |
+## 6. EKS 구축 완료와 추가 장애
+
+초기 Node Group 생성에서는 `iam:PassRole` 조건이 맞지 않아 실패했다. Node Role의 신뢰 대상은 `ec2.amazonaws.com`이지만, `CreateNodegroup` API로 역할을 전달받는 서비스는 `eks.amazonaws.com`이었다. 실행 사용자 정책에서 이 차이를 수정했다.
+
+서비스 연결 역할의 조회 권한 문제도 추가로 해결했다. 이후 `t3.medium`이 해당 계정의 Free Tier 적격 유형이 아니라는 오류로 노드 생성이 실패했다. 제공 가능 유형과 계정 제약을 확인한 뒤 `m7i-flex.large`로 변경했고, 두 노드가 각각 AZ-a와 AZ-c에서 Ready 상태가 됐다.
+
+CoreDNS, VPC CNI, kube-proxy를 확인하고 테스트 Pod에서 DNS 조회와 외부 HTTPS `HTTP 200`을 검증했다. 이 결과는 외부 접근 성공을 보여주지만 NAT 경유 패킷을 직접 캡처한 결과는 아니다.
+
+## 7. Python API, ECR, Kubernetes Service
+
+Python 표준 라이브러리로 세 경로를 구현했다.
+
+| 경로 | 용도 |
 | --- | --- |
-| 클러스터 | `aegis-eks`, Kubernetes `1.36` |
-| 노드 그룹 | `aegis-workers`, Managed Node Group |
-| 노드 사양 | `t3.medium`, On-Demand, 디스크 20 GiB |
-| 노드 수 | desired 2, min 1, max 2 |
-| 서브넷 | 기존 Private a/c |
-| API endpoint | Public + Private, Public 접근은 로컬에서 확인한 IPv4 `/32` |
-| 인증 | `API` 모드, 생성자 초기 관리자 권한 활성화 |
-| 지원 정책 | `STANDARD` |
+| `/healthz` | HTTP 프로세스 생존 응답 |
+| `/readyz` | 단순 요청 준비 응답 |
+| `/api/info` | 서비스명, 버전, 응답 Pod 호스트명 |
 
-[eks.tf](terraform/eks.tf), [nodegroup.tf](terraform/nodegroup.tf), [variables.tf](terraform/variables.tf)에 정의했다. 별도의 `aws_eks_access_entry` 리소스를 작성한 것은 아니며, 클러스터 생성 시 부여되는 생성자 관리자 접근을 사용할 계획이다. 실제 kubectl 인증·권한은 배포 후 확인해야 한다.
+로컬 ARM64 Docker 환경에서 API 응답을 검증하고, EKS 워커용 `linux/amd64` 이미지를 ECR에 업로드했다. Deployment는 2 Replicas, Pod 분산 제약, 비루트 실행, 리소스 제한 및 HTTP Probe를 사용했다.
 
-버전 조회가 처음 비어 있었던 원인은 JMESPath 필터였다. 응답의 `clusterVersion`은 문자열인데 백틱으로 쓴 `1.36`과 `1.37`을 숫자로 비교했다. 원본 응답을 문자열로 비교하니 두 버전 모두 `STANDARD_SUPPORT`였다. 조회 시점의 1.36 표준 지원 종료일은 2027-08-02였으며 이후에도 배포 직전에 다시 확인해야 한다.
+서로 다른 AZ의 Pod 2개가 Ready였고 ClusterIP Service의 Endpoint에 두 Pod IP가 등록됐다. 클러스터 내부 Service에 30회 요청한 결과 각 Pod가 15회씩 응답했다. 이는 해당 테스트의 관측값이지 항상 50:50 분산된다는 보장은 아니다.
 
-`ec2:DescribeInstanceTypeOfferings`는 권한 부족으로 거부됐다. 따라서 두 AZ에서 `t3.medium`이 제공되는지는 미확인이다. 두 서브넷을 지정했다고 노드가 각 AZ에 정확히 하나씩 배치되는 것도 보장하지 않는다.
+[내부 Service 응답 원본](evidence/app/load-balancing.txt)
 
-## 7. 로컬에서 계획 검증하기
+## 8. ALB 외부 연결과 IAM 복구
 
-Terraform 1.17.2, AWS Provider 6.73.0을 사용했다. AWS CLI의 `terraform-lab` 프로필과 해당 리소스 조회 권한이 준비돼 있어야 한다. 아래 명령은 형식·구조와 배포 계획을 확인한다.
+EKS OIDC Provider를 등록하고 AWS Load Balancer Controller의 ServiceAccount에 전용 IAM Role을 연결했다. Helm으로 배포한 Controller v3.6.3은 2/2 Ready였다.
+
+Controller IAM Policy와 Role 생성 과정에서 조회 권한 부족으로 Terraform이 부분 실패했다. AWS에는 두 리소스가 존재했지만 State에서는 `tainted`로 기록됐다. 조회 권한을 보완하고 실제 AWS 상태를 확인한 다음 State를 백업하고 `untaint`했다. 삭제·재생성 없이 Policy Attachment 1개만 적용해 복구했다.
+
+Ingress는 Public Subnet 두 개에 internet-facing ALB를 구성했고, IP Target을 사용해 Private Pod에 직접 전달했다. HTTP 80 포트는 실습 당시 공인 IPv4 `/32`만 허용했다.
+
+ALB 생성 직후 DNS 조회가 실패했지만 콘솔에서 `Provisioning` 상태임을 확인했다. 이후 DNS가 정상 해석되고 `/healthz`, `/readyz`, `/api/info` 모두 외부 HTTP 200을 반환했다.
+
+ALB 경유 20회 요청에서 두 Pod가 각각 10회 응답했고, AWS Target Group에서 두 대상 모두 Healthy인 것을 확인했다.
+
+[외부 HTTP 응답](evidence/alb/http-responses.txt) · [ALB 응답 20회](evidence/alb/alb-responses.txt) · [장애 전 Target 화면](evidence/alb/target-health.png)
+
+## 9. Pod 장애 주입과 실제 응답
+
+정상 상태에서 외부 요청 기록을 시작하고 Pod `h5h86`을 삭제했다. Deployment는 새 Pod `tnz25`를 생성했다.
+
+| 시각 (KST) | 관측 결과 |
+| --- | --- |
+| 00:42:00 | HTTP 모니터링 시작 |
+| 00:42:05 | 기존 Pod 삭제 요청 |
+| 00:42:07 | Deployment rollout 완료 출력 |
+| 00:42:08~11 | 살아남은 Pod가 요청 처리 |
+| 00:42:12 | 새 Pod가 외부 HTTP 요청에 최초 응답 |
+| 00:43:37 | 90회 HTTP 기록 종료 |
+
+| 응답 Pod | HTTP 200 횟수 |
+| --- | ---: |
+| 삭제한 Pod `h5h86` | 4 |
+| 유지된 Pod `xzgcj` | 47 |
+| 새 Pod `tnz25` | 39 |
+| **합계** | **90** |
+
+**90회 중 90회 HTTP 200(100%)**을 관측했다. 삭제 요청과 새 Pod 첫 응답의 시각 차이는 약 7초다. 이는 정확한 Pod Ready 시간이나 ALB Healthy 전환 시간과 같지 않다.
+
+장애 후 AWS Target Group에서는 유지 Pod와 새 Pod가 Healthy였으며, 삭제된 Pod는 Draining 상태로 관측됐다. 삭제 후 등록 해제 과정이 진행되는 동안 두 정상 대상이 존재한다는 것을 확인했다.
+
+[HTTP 90회 원본](evidence/recovery/http-during-failure.txt) · [타임라인](evidence/recovery/recovery-timeline.svg) · [Target 전환 화면](evidence/recovery/target-transition.png)
+
+## 10. 한계, 비용, 운영 판단
+
+- 워커 노드는 두 AZ에 분산됐지만 NAT는 한 AZ에만 있어 NAT/AZ 장애까지 견디는 구조는 아니다.
+- ALB는 HTTP만 사용했다. 실제 서비스에는 HTTPS, 인증서와 추가 접근 통제가 필요하다.
+- `/readyz`는 외부 의존성을 검사하지 않는 단순 정상 응답이다.
+- VPC CNI 정책은 초기 실습 구성을 단순화하기 위해 Node Role에 연결했다.
+- Pod 한 개 삭제만 검증했다. 노드 장애, AZ 장애, NAT 장애 및 고부하 상황까지 검증한 것은 아니다.
+- 약 1초 간격의 90회 성공은 해당 실험의 관측 결과다. 모든 장애 상황에서 무중단을 보장하지 않는다.
+- 비용은 EKS Control Plane, 실제 EC2 워커, EBS, NAT, IPv4, ALB, ECR 및 데이터 처리량에 따라 발생한다. 초기 `t3.medium` 가정 비용을 최종 실측 비용으로 사용하지 않는다.
+
+Terraform은 VPC·EKS·IAM·ECR 등을 관리하고, ALB와 Target Group은 Kubernetes Controller가 관리한다. 따라서 Terraform `No changes`는 Controller 관리 리소스의 정상 상태까지 보장하지 않는다.
+
+## 11. 코드 및 증빙
+
+- `terraform/`: VPC, 네트워크, EKS, ECR, OIDC, IAM
+- `app/`: Python API, Dockerfile
+- `k8s/`: Deployment, Service, Ingress, Controller ServiceAccount
+- `recovery-test.sh`: Pod 장애 주입과 HTTP 관측
+- `diagrams/`: 아키텍처 원본
+- `evidence/`: 네트워크·EKS·API·ALB·복구 원본 기록
+
+로컬 AWS 프로필과 접속 IP, 계정별 ECR 주소, IAM Role ARN은 재현 환경에 맞게 준비해야 한다. State와 Plan 파일, 자격 증명은 Git 공개 대상에서 제외한다.
+
+
+### 공개용 Kubernetes 설정
+
+`k8s/`의 YAML에는 실제 AWS 계정번호와 개인 공인 IP 대신
+`${AWS_ACCOUNT_ID}`, `${ALLOWED_CIDR}` 변수를 사용했다.
+
+따라서 이 파일들은 환경변수를 치환하지 않은 상태로
+`kubectl apply -f`를 실행하는 배포용 완성 파일이 아니다.
+
+다음은 별도 패키지 설치 없이 로컬에서 렌더링하는 예시다.
 
 ```bash
-cd ~/infrastructure-engineering-lab/investigations/06-aws-eks-infrastructure/terraform
-terraform init
+export AWS_ACCOUNT_ID="본인 AWS 계정번호"
+export ALLOWED_CIDR="본인 공인 IPv4/32"
+
+python3 - <<'RENDER'
+from pathlib import Path
+from string import Template
+import os
+
+for name in [
+    "api.yaml",
+    "api-ingress.yaml",
+    "alb-controller-serviceaccount.yaml",
+]:
+    src = Path("k8s") / name
+    output = Path("/tmp") / name
+    output.write_text(
+        Template(src.read_text()).substitute(os.environ),
+        encoding="utf-8"
+    )
+    print(output)
+RENDER
 ```
 
-실제 접속 위치의 공인 IPv4를 확인해 Git에서 제외되는 `terraform.tfvars`를 로컬에 작성한다. 다음 주소는 문서용 예시이므로 그대로 사용하지 않는다.
+이 명령은 `/tmp`에 치환된 파일을 생성할 뿐,
+실제 Kubernetes 리소스에는 적용하지 않는다.
+환경변수의 실제 값이나 렌더링 결과는 Git에 추가하지 않는다.
 
-```hcl
-eks_public_access_cidrs = ["203.0.113.10/32"]
-```
+### 증빙 공개 범위
 
-```bash
-terraform fmt -check -diff
-terraform validate
-terraform plan -input=false -out=eks-build.tfplan
-terraform show -json eks-build.tfplan | jq -r '
-  .resource_changes[] |
-  select(.change.actions != ["no-op"]) |
-  "\(.change.actions | join(",")) | \(.address)"'
-git check-ignore -v terraform.tfvars eks-build.tfplan terraform.tfstate
-```
+AWS Target Group 스크린샷 2장은 계정 식별 정보를 가린 공개용 이미지다.
+원본 스크린샷은 로컬에 별도로 보관한다.
 
-이번 로컬 State에는 기존 21개 리소스가 등록돼 있어 EKS Cluster와 Node Group 2개만 추가 예정이었다. State가 없는 새 체크아웃에서는 네트워크와 IAM도 새로 만드는 계획이 나온다. 같은 결과를 얻으려고 기존 State를 삭제하거나 다른 사람에게 공유하면 안 된다.
+`evidence/recovery/terraform-final-check.txt` 역시
+계정번호를 변수로 치환한 공개용 사본이다.
+그 외 실험 측정값은 임의로 변경하지 않는다.
 
-배포 전 Plan의 공개용 요약과 이후 부분 배포 상태는 [계획 검증 결과](evidence/validation/eks-plan-review.json)에 저장했다. 원본 Plan이나 State 내용은 포함하지 않았다. 위 검증 명령에는 apply/destroy를 넣지 않았다. 부분 배포 후에는 이전 계획 파일을 다시 적용하지 않고 현재 State를 반영한 복구 계획을 새로 확인해야 한다.
+## 12. 회고
 
-### Node Group의 PassRole 조건 불일치
+가장 어려웠던 부분은 매니페스트를 작성하는 작업보다 AWS 권한과 부분 배포 상태를 다루는 과정이었다. 생성 도중 권한 오류가 나더라도 실제 AWS 리소스가 이미 존재할 수 있었다.
 
-최종 사전 점검 후 `eks-preflight.tfplan`을 적용했다. 클러스터는 7분 33초 후 생성됐지만 Node Group의 `CreateNodegroup` 호출은 `iam:PassRole` 거부로 중단됐다. 이후 읽기 전용 조회에서 클러스터 `ACTIVE`, Node Group 목록 `[]`, State의 클러스터 등록을 확인했다. 재실행이나 삭제는 하지 않았다.
+이때 오류 메시지만 보거나 무조건 다시 적용하는 대신, **실제 AWS 상태 → Terraform State → 새 Plan**을 차례대로 확인하는 방식이 유효했다.
 
-Node Role의 신뢰 정책과 실행 사용자에게 부여한 PassRole 조건을 구분해야 했다. 노드를 실행하는 EC2의 신뢰 서비스는 `ec2.amazonaws.com`이지만, Node Group 생성 API로 역할을 전달받는 서비스는 `eks.amazonaws.com`이다. [AWS EKS 권한 참조](https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html)의 `CreateNodegroup` 매핑에서도 이 조건을 확인했다. 사전 시뮬레이션은 잘못된 EC2 서비스 조건을 넣고 허용을 확인했기 때문에 실제 요청을 검증하지 못했다.
+또한 Kubernetes의 Ready 상태만으로 외부 서비스가 정상이라고 판단하지 않았다. ALB DNS, 실제 HTTP 응답, Target Health까지 확인해야 비로소 요청 흐름을 설명할 수 있었다.
 
-현재는 Node Role의 `iam:PassedToService`를 `ec2.amazonaws.com`에서 `eks.amazonaws.com`으로 교체하는 정책 수정안을 저장 직전까지 준비한 상태다. 아직 저장하거나 수정 후 시뮬레이션·복구 Plan을 실행하지 않았다. 다른 역할·정책 권한과 Node Role의 신뢰 정책은 변경 대상이 아니다. 실제 Node Group 생성과 최종 성공 여부는 후속 복구 후 기록한다.
-
-## 8. 배포 전 남은 확인과 비용
-
-- 배포 직전 시뮬레이터에서 서울 리전의 `CreateCluster`·`CreateNodegroup`, 각 역할과 대상 서비스를 지정한 `PassRole`, EKS/Node Group 서비스 연결 역할 ARN의 `CreateServiceLinkedRole`이 허용됐다. 실제 생성 시 연관 API와 권한 전파까지 검증한 것은 아니다.
-- AZ별 인스턴스 제공 여부와 실제 EC2 용량은 미확인이다.
-- 현재 CIDR 변수 검증은 유효한 CIDR인지와 `0.0.0.0/0` 제외만 검사한다. 모든 입력을 IPv4 `/32`로 강제하는 검증은 아니다. 이번 로컬 변수는 실제 IPv4 `/32`인지 별도로 확인했다.
-- Public IP가 바뀌면 허용 CIDR을 갱신해야 한다. Node Group 배치, CNI, DNS, ECR 이미지 가져오기와 실제 인터넷 통신은 배포 후 검증한다.
-- 단일 NAT의 가용성 한계, CNI 정책의 Node Role 공유, 클러스터 생성자 관리자 권한은 실습 편의를 고려한 선택이다.
-- 현재 NAT Gateway와 공인 IPv4 유지 비용이 발생한다. 실제 사용 시간과 청구액은 아직 확정하지 않았다.
-
-### 배포 전 비용 시나리오
-
-2026-11-21에 확인한 공개 단가 기준이며 USD, 할인·크레딧·세금 적용 전 추정이다. EC2/NAT/EBS는 [AWS 서울 리전 공개 가격표](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/ap-northeast-2/index.csv)의 On-Demand 단가(적용일 2026-11-01)를 사용했다. [EKS 요금](https://aws.amazon.com/eks/pricing/)과 [VPC 공인 IPv4 요금](https://aws.amazon.com/vpc/pricing/)도 확인했다.
-
-| 구성 | 계산 | 시간당 비용 |
-| --- | --- | --- |
-| EKS 표준 지원 | 1 × $0.10 | $0.100 |
-| Linux t3.medium | 2 × $0.052 | $0.104 |
-| NAT Gateway | 1 × $0.059 | $0.059 |
-| 공인 IPv4 | NAT용 1개 × $0.005 | $0.005 |
-| EBS | 노드당 20 GiB, 총 40 GiB | 아래 범위로 추정 |
-
-현재 Node Group 코드에서 볼륨 종류는 명시하지 않았다. gp3 단가 $0.0912/GB-month와 gp2 단가 $0.114/GB-month로 계산하면, 월 730시간 환산 시 40 GiB의 시간당 비용은 약 $0.0050~$0.0062다. 실제 생성된 볼륨 종류와 청구 시간으로 다시 계산해야 한다.
-
-따라서 워커 2개까지 생성한 경우의 기본 유지비는 **약 $0.273~$0.274/시간**이다. 실습 시간을 2시간으로 가정하면 약 $0.55, 4시간이면 약 $1.09~$1.10이다. 이는 사용 시간별 비교 시나리오이며 사용자가 정한 작업 시간이나 지출 한도는 아니다. 배포 준비·생성·삭제 대기 시간도 비용에 영향을 준다. 현재는 EKS 클러스터와 NAT+공인 IPv4가 남아 있어 기본 비용이 약 $0.164/시간 발생하는 상태다. Node Group 생성은 거부됐고 목록은 비어 있다.
-
-위 합계에는 NAT 처리량($0.059/GB), AZ 간 전송, 인터넷 송신, T3 CPU 추가 크레딧, 추가 EBS 성능·스냅샷, 이후 ALB·로그 비용을 포함하지 않았다. 실제 전체 청구액의 상한으로 보면 안 된다. 부분 배포 상태에서도 생성된 유료 리소스의 비용은 계속 발생한다.
-
-## 9. GitHub 업로드 전 점검
-
-로컬 검증에서 `.terraform/`, `*.tfstate`, State 백업, `*.tfplan`, `*.tfvars`가 Git에서 제외되는지 확인했다. Provider 버전 재현을 위해 `.terraform.lock.hcl`은 포함한다. 현재 `.tf` 파일, README와 증빙을 대상으로 인증정보·개인 로컬 절대경로·실제 접속 IP의 포함 여부를 검사했다.
-
-기존 네트워크 증빙은 변경하지 않았다. 공개 후보 파일에는 AWS 리소스 ID와 사설 CIDR이 포함되지만 계정 번호, 실제 공인 IP, 토큰이나 액세스 키는 넣지 않았다. 개인 접속 IP가 들어간 로컬 변수와 전체 State/Plan은 공개 후보에서 제외했다.
-
-Git 추가 후보는 README, `terraform/*.tf`, `terraform/.gitignore`, `terraform/.terraform.lock.hcl`, 기존 `evidence/network/` 2개 파일과 `evidence/validation/eks-plan-review.json`이다. 아직 stage, commit, push하지 않았다.
+Pod 삭제 실험에서도 성공률 수치뿐 아니라 삭제된 Pod, 유지된 Pod, 새 Pod가 각각 언제 응답했는지 남긴 것이 가장 의미 있었다.

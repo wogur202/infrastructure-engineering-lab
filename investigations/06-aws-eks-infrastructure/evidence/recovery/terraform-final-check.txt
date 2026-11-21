@@ -1,0 +1,35 @@
+aws_ecr_repository.api: Refreshing state... [id=aegis-api]
+aws_iam_role.eks_node: Refreshing state... [id=aegis-eks-node-role]
+aws_vpc.main: Refreshing state... [id=vpc-00e59c688b5202d62]
+aws_iam_role.eks_cluster: Refreshing state... [id=aegis-eks-cluster-role]
+aws_eip.nat: Refreshing state... [id=eipalloc-03ea0688be054a975]
+aws_iam_policy.alb_controller: Refreshing state... [id=arn:aws:iam::${AWS_ACCOUNT_ID}:policy/AegisALBControllerPolicy]
+aws_internet_gateway.main: Refreshing state... [id=igw-0890e9a8fb39e49bc]
+aws_route_table.private: Refreshing state... [id=rtb-05d6e84aebf501a7c]
+aws_subnet.private["a"]: Refreshing state... [id=subnet-01c69e51c079e5d45]
+aws_subnet.public["c"]: Refreshing state... [id=subnet-005d37ee6b7030ed1]
+aws_subnet.public["a"]: Refreshing state... [id=subnet-065ced33c9ad3b608]
+aws_subnet.private["c"]: Refreshing state... [id=subnet-09fa60d4862ff65b3]
+aws_route_table.public: Refreshing state... [id=rtb-02b9bc631f25b17ac]
+aws_route_table_association.public["c"]: Refreshing state... [id=rtbassoc-09dcacc5904cb5893]
+aws_route_table_association.public["a"]: Refreshing state... [id=rtbassoc-0325ece2a1f5f73a9]
+aws_nat_gateway.main: Refreshing state... [id=nat-0e73be87731e3f50b]
+aws_route_table_association.private["c"]: Refreshing state... [id=rtbassoc-01f51109b0b3b1457]
+aws_route_table_association.private["a"]: Refreshing state... [id=rtbassoc-01b4a19e3367ebd02]
+aws_route.private_nat: Refreshing state... [id=r-rtb-05d6e84aebf501a7c1080289494]
+aws_iam_role_policy_attachment.eks_worker: Refreshing state... [id=aegis-eks-node-role/arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy]
+aws_iam_role_policy_attachment.eks_ecr: Refreshing state... [id=aegis-eks-node-role/arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly]
+aws_iam_role_policy_attachment.eks_cni: Refreshing state... [id=aegis-eks-node-role/arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy]
+aws_iam_role_policy_attachment.eks_cluster: Refreshing state... [id=aegis-eks-cluster-role/arn:aws:iam::aws:policy/AmazonEKSClusterPolicy]
+aws_eks_cluster.main: Refreshing state... [id=aegis-eks]
+aws_iam_openid_connect_provider.eks: Refreshing state... [id=arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/oidc.eks.ap-northeast-2.amazonaws.com/id/B6E63171FEC179117A0649A5296CA286]
+aws_eks_node_group.main: Refreshing state... [id=aegis-eks:aegis-workers]
+data.aws_iam_policy_document.alb_controller_assume: Reading...
+data.aws_iam_policy_document.alb_controller_assume: Read complete after 0s [id=3870842496]
+aws_iam_role.alb_controller: Refreshing state... [id=aegis-alb-controller-role]
+aws_iam_role_policy_attachment.alb_controller: Refreshing state... [id=aegis-alb-controller-role/arn:aws:iam::${AWS_ACCOUNT_ID}:policy/AegisALBControllerPolicy]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.

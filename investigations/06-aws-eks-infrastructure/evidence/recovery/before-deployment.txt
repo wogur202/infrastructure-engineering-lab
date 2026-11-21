@@ -1,0 +1,2 @@
+NAME        READY   UP-TO-DATE   AVAILABLE   AGE
+aegis-api   2/2     2            2           54m

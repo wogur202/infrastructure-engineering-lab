@@ -1,0 +1,2 @@
+NAME        CLASS   HOSTS   ADDRESS                                                                    PORTS   AGE
+aegis-api   alb     *       k8s-aegis-aegisapi-f825a2a298-628656628.ap-northeast-2.elb.amazonaws.com   80      44s

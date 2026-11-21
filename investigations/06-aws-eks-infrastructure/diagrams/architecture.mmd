@@ -1,0 +1,48 @@
+flowchart TB
+    USER["External Client"]
+
+    subgraph AWS["AWS · ap-northeast-2"]
+        ECR["Amazon ECR<br/>aegis-api:1.0.0"]
+
+        subgraph VPC["VPC · 10.20.0.0/16"]
+            IGW["Internet Gateway"]
+
+            subgraph PUBLIC["Public Subnets"]
+                ALB["Application Load Balancer<br/>HTTP :80"]
+                NAT["NAT Gateway · AZ-a"]
+            end
+
+            subgraph EKS["EKS · aegis-eks"]
+                SVC["Kubernetes Service<br/>ClusterIP :8080"]
+
+                subgraph AZA["AZ-a · Private 10.20.11.0/24"]
+                    PODA["Python API Pod A<br/>:8080"]
+                end
+
+                subgraph AZC["AZ-c · Private 10.20.12.0/24"]
+                    PODB["Python API Pod B<br/>:8080"]
+                end
+            end
+        end
+    end
+
+    USER -->|"HTTP · allowed IPv4 /32"| IGW
+    IGW --> ALB
+    ALB -->|"IP targets · :8080"| PODA
+    ALB -->|"IP targets · :8080"| PODB
+
+    SVC -.-> PODA
+    SVC -.-> PODB
+    KUBELET["Worker Node kubelet<br/>ECR image pull"]
+    KUBELET -.->|"Pull image"| ECR
+    PODA -.->|"Outbound"| NAT
+    PODB -.->|"Cross-AZ outbound"| NAT
+    NAT --> IGW
+
+    classDef frontend fill:#eaf2fc,stroke:#4778ac,color:#243b56
+    classDef workload fill:#e8f5ee,stroke:#43876d,color:#245340
+    classDef network fill:#f5f1e9,stroke:#a58c62,color:#55462b
+
+    class USER,ALB frontend
+    class PODA,PODB,SVC workload
+    class IGW,NAT,ECR network

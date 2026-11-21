@@ -1,0 +1,9 @@
+=== /healthz ===
+{"status": "ok"}
+HTTP 200
+=== /readyz ===
+{"status": "ok"}
+HTTP 200
+=== /api/info ===
+{"service": "aegis-api", "version": "1.0.0", "hostname": "aegis-api-6bfdf59bcd-h5h86"}
+HTTP 200

@@ -1,0 +1,8 @@
+NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/aegis-api   2/2     2            2           44s
+
+NAME                TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE
+service/aegis-api   ClusterIP   172.20.97.62   <none>        8080/TCP   44s
+
+NAME                                             ADDRESSTYPE   PORTS   ENDPOINTS                  AGE
+endpointslice.discovery.k8s.io/aegis-api-s2zxr   IPv4          8080    10.20.11.70,10.20.12.199   44s
