@@ -1,0 +1,20 @@
+aws_eip.nat: Refreshing state... [id=eipalloc-03ea0688be054a975]
+aws_vpc.main: Refreshing state... [id=vpc-00e59c688b5202d62]
+aws_internet_gateway.main: Refreshing state... [id=igw-0890e9a8fb39e49bc]
+aws_route_table.private: Refreshing state... [id=rtb-05d6e84aebf501a7c]
+aws_subnet.public["c"]: Refreshing state... [id=subnet-005d37ee6b7030ed1]
+aws_subnet.private["a"]: Refreshing state... [id=subnet-01c69e51c079e5d45]
+aws_subnet.private["c"]: Refreshing state... [id=subnet-09fa60d4862ff65b3]
+aws_subnet.public["a"]: Refreshing state... [id=subnet-065ced33c9ad3b608]
+aws_route_table.public: Refreshing state... [id=rtb-02b9bc631f25b17ac]
+aws_route_table_association.private["a"]: Refreshing state... [id=rtbassoc-01b4a19e3367ebd02]
+aws_nat_gateway.main: Refreshing state... [id=nat-0e73be87731e3f50b]
+aws_route_table_association.private["c"]: Refreshing state... [id=rtbassoc-01f51109b0b3b1457]
+aws_route_table_association.public["a"]: Refreshing state... [id=rtbassoc-0325ece2a1f5f73a9]
+aws_route_table_association.public["c"]: Refreshing state... [id=rtbassoc-09dcacc5904cb5893]
+aws_route.private_nat: Refreshing state... [id=r-rtb-05d6e84aebf501a7c1080289494]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.

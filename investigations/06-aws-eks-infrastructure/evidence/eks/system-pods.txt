@@ -1,0 +1,7 @@
+NAME                       READY   STATUS    RESTARTS   AGE   IP             NODE                                              NOMINATED NODE   READINESS GATES
+aws-node-lgd6m             2/2     Running   0          71s   10.20.12.87    ip-10-20-12-87.ap-northeast-2.compute.internal    <none>           <none>
+aws-node-x6szs             2/2     Running   0          71s   10.20.11.163   ip-10-20-11-163.ap-northeast-2.compute.internal   <none>           <none>
+coredns-56f789dc49-9s7r8   1/1     Running   0          93m   10.20.11.65    ip-10-20-11-163.ap-northeast-2.compute.internal   <none>           <none>
+coredns-56f789dc49-bg9z4   1/1     Running   0          93m   10.20.12.109   ip-10-20-12-87.ap-northeast-2.compute.internal    <none>           <none>
+kube-proxy-6w5sr           1/1     Running   0          71s   10.20.11.163   ip-10-20-11-163.ap-northeast-2.compute.internal   <none>           <none>
+kube-proxy-tqlrb           1/1     Running   0          71s   10.20.12.87    ip-10-20-12-87.ap-northeast-2.compute.internal    <none>           <none>

@@ -1,0 +1,8 @@
+{
+    "Status": "ACTIVE",
+    "InstanceTypes": [
+        "m7i-flex.large"
+    ],
+    "Desired": 2,
+    "Issues": []
+}

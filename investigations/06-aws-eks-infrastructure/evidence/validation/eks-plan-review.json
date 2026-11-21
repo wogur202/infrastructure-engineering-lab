@@ -1,0 +1,114 @@
+{
+  "verified_on": "2026-11-21",
+  "scope": "Historical pre-deployment plan review with subsequent partial-deployment observation.",
+  "terraform_version": "1.17.2",
+  "checks": {
+    "fmt_exit_code": 0,
+    "validate_exit_code": 0,
+    "plan_exit_code": 0
+  },
+  "planned_changes": [
+    {
+      "address": "aws_eks_cluster.main",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_eks_node_group.main",
+      "actions": [
+        "create"
+      ]
+    }
+  ],
+  "counts": {
+    "add": 2,
+    "change": 0,
+    "destroy": 0,
+    "unchanged_existing_resources": 21
+  },
+  "public_endpoint": {
+    "enabled": true,
+    "private_endpoint_enabled": true,
+    "cidr_count": 1,
+    "ipv4_prefix_length": 32,
+    "address_omitted": true
+  },
+  "kubernetes_version": "1.36",
+  "version_api_observation": {
+    "status": "STANDARD_SUPPORT",
+    "end_of_standard_support": "2027-08-02T09:00:00+09:00"
+  },
+  "instance_offerings": {
+    "verified": false,
+    "reason": "Access denied: ec2:DescribeInstanceTypeOfferings"
+  },
+  "limits": [
+    "Plan does not prove create-time authorization or EC2 capacity.",
+    "No EKS cluster, node, kubectl access, or workload connectivity verification yet.",
+    "Existing network evidence files are preserved historical observations."
+  ],
+  "preflight": {
+    "plan_file_local_only": "eks-preflight.tfplan",
+    "plan_exit_code": 0,
+    "unchanged_existing_resources": 21,
+    "add": 2,
+    "change": 0,
+    "destroy": 0,
+    "bootstrap_creator_admin": true,
+    "authentication_mode": "API",
+    "iam_simulator": {
+      "CreateCluster": "allowed with ap-northeast-2 condition",
+      "CreateNodegroup": "allowed with ap-northeast-2 condition",
+      "PassRole_cluster": "allowed with cluster role ARN and eks.amazonaws.com",
+      "PassRole_node": "allowed with node role ARN and ec2.amazonaws.com",
+      "CreateServiceLinkedRole_eks": "allowed with EKS service-linked role ARN",
+      "CreateServiceLinkedRole_nodegroup": "allowed with nodegroup service-linked role ARN"
+    },
+    "deployment_executed": false
+  },
+  "cost_scenario": {
+    "currency": "USD",
+    "fixed_hourly_estimate_range": [
+      0.273,
+      0.2743
+    ],
+    "two_hour_estimate": 0.55,
+    "four_hour_estimate_range": [
+      1.09,
+      1.1
+    ],
+    "duration_user_confirmed": false,
+    "excludes": [
+      "NAT data processing",
+      "data transfer",
+      "T3 surplus credits",
+      "ALB",
+      "logs",
+      "tax"
+    ],
+    "sources": [
+      "https://aws.amazon.com/eks/pricing/",
+      "https://aws.amazon.com/vpc/pricing/",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/ap-northeast-2/index.csv"
+    ]
+  },
+  "latest_deployment": {
+    "verified_on": "2026-11-21",
+    "apply_exit_code": 1,
+    "cluster_creation_duration": "7m33s",
+    "cluster": {
+      "name": "aegis-eks",
+      "status": "ACTIVE",
+      "version": "1.36"
+    },
+    "nodegroups": [],
+    "state_resource_count": 22,
+    "failed_operation": "eks:CreateNodegroup",
+    "missing_authorization": "iam:PassRole on node role",
+    "cause": "Node role PassedToService was ec2.amazonaws.com; CreateNodegroup requires eks.amazonaws.com.",
+    "policy_fix_saved": false,
+    "retry_executed": false,
+    "runtime_connectivity_verified": false
+  }
+}
