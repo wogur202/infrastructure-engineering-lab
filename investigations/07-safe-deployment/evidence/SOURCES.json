@@ -1,0 +1,127 @@
+{
+  "note": "원본은 저장소 밖 비공개 영구 보관. 경로는 보관 루트 기준 상대경로. 제출용 JSON은 선별·마스킹 사본.",
+  "files": {
+    "01-ci-ecr/run.json": [
+      {
+        "source": "ci-run-45006939590.json",
+        "sha256": "9ff0d91d414a9329cc8b3f97e296ae9901218a3ede1c5240895fc49e5a976b0e"
+      }
+    ],
+    "01-ci-ecr/publish-excerpt.json": [
+      {
+        "source": "ci-run-45006939590.log",
+        "sha256": "bfc48786b5164329c974ba3675c6e93432a229f506ae3d8a0ed2f41b5e685315"
+      }
+    ],
+    "02-blue-green/normal-blue-http.json": [
+      {
+        "source": "aegis-step07c-slots-pmrk9u7c/external-blue.json",
+        "sha256": "ee217b6c053abafcb38a03984dab56ee80da66c54396d923c191b1a0ab31a74c"
+      }
+    ],
+    "02-blue-green/normal-green-http.json": [
+      {
+        "source": "aegis-step07c-switch-qcieirmz/external-green.json",
+        "sha256": "b02cce4c1fbff681627ef3542370590b1b4ada2f088b715fc64a403918fb5681"
+      }
+    ],
+    "02-blue-green/retry-green-baseline.json": [
+      {
+        "source": "aegis-step07d-gl1wjjzs/normal-green-baseline.json",
+        "sha256": "e2f6c7d8d2e950511e3850765f64d9344a4c9766f5e451f37a555be7855a06c1"
+      }
+    ],
+    "03-failure-rollback/first-attempt-error.json": [
+      {
+        "source": "aegis-step07d-2rq4mx19/error.json",
+        "sha256": "9913e0f696920e34255aaab7d6719ffd4bf535dcf99d87195aa50ff8b5096f03"
+      }
+    ],
+    "03-failure-rollback/first-attempt-timeline.json": [
+      {
+        "source": "aegis-step07d-2rq4mx19/timeline.json",
+        "sha256": "c46cdd90bf70b354a3e540b9a48130a271c8b41af2b152aaee6b94528b0d7c2f"
+      }
+    ],
+    "03-failure-rollback/fault-external.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/fault-external.json",
+        "sha256": "f672ad52666cfc8f12cc3ddbe6ba0380c8c187bd5b8060362c1ab9868ad5db10"
+      }
+    ],
+    "03-failure-rollback/fault-active-observations.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/faulty-green-observations.json",
+        "sha256": "d2458bf124a5873f6ee7eef0b35d4c7badca094b72440eca9d776aa48e278031"
+      }
+    ],
+    "03-failure-rollback/timeline.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/timeline.json",
+        "sha256": "df1ba37ebafddee16753ab77916ab773cd271abb69c55035bcfe1779181a6495"
+      }
+    ],
+    "03-failure-rollback/console-fault-observation.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/aws-console-fault-observation.json",
+        "sha256": "96d0f9bee7a2ae4f57ee3f103ea4497a44f1b75708f1637b713aa18b78171817"
+      }
+    ],
+    "03-failure-rollback/console-rollback-observation.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/aws-console-rollback-observation.json",
+        "sha256": "010058341f9562a7e8a2d4af1c854b1524a7cf6a48a1fd2109c2265899b2230f"
+      }
+    ],
+    "03-failure-rollback/rollback-external.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/rollback-external.json",
+        "sha256": "67427abe8eea78831519bcf58c377d52d6bef3dc7f99b1db1e8f1fd87307b685"
+      }
+    ],
+    "03-failure-rollback/fault-individual-pods.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/aegis-api-green-c6df85fb4-kfvsj-fault.json",
+        "sha256": "7e24d1c0fd94f98c202098805b0bd1b2941dacc466a8ef94d6e785d0871033d3"
+      },
+      {
+        "source": "aegis-step07d-wsxz_yby/aegis-api-green-c6df85fb4-zrdrc-fault.json",
+        "sha256": "7ad86ec51a0add16e49385931a7b806f3e2d717d2e0dbc4419441d4b198a5fb8"
+      }
+    ],
+    "04-recovery/final-http.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/final-external.json",
+        "sha256": "be60d1c0eb6e91592a0e6b7b94a4974d592d40db083f0e4286dff9902559f9f7"
+      }
+    ],
+    "04-recovery/console-restored-health-observation.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/aws-console-restored-health-observation.json",
+        "sha256": "7477c13997511e37cd5df392508b504fefd9d65d4634537a03de1a78dad01374"
+      }
+    ],
+    "04-recovery/restored-active-observations.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/restored-green-observations.json",
+        "sha256": "6b008a6d6bd94f2da48631e20bda096305ba9082be9711c73ee6497600a3d556"
+      }
+    ],
+    "04-recovery/restored-individual-pods.json": [
+      {
+        "source": "aegis-step07d-wsxz_yby/aegis-api-green-65454975c-j9cpz-restored.json",
+        "sha256": "68e696c49a3648a01868ab22ee8cd8a56a053f7b0b9bc7316a098cf0090e72fa"
+      },
+      {
+        "source": "aegis-step07d-wsxz_yby/aegis-api-green-65454975c-fzqkx-restored.json",
+        "sha256": "beb12a7528e1df6f616a7c10f6f0b3964b8eb7b9bb46e3c3b22a0986c7709847"
+      }
+    ],
+    "04-recovery/final-resources-selected.json": [
+      {
+        "source": "final-cluster-resources.json",
+        "sha256": "6e401c031385805a7fdfedd79952a882bbe55eb4d3f970ba188e4d2f29f4d368"
+      }
+    ]
+  }
+}

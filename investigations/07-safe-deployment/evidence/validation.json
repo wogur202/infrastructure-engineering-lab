@@ -1,0 +1,24 @@
+{
+  "checked_at_utc": "2026-11-22T14:32:35.212965+00:00",
+  "local_tests": {
+    "command": "python3 -m unittest discover -s investigations/07-safe-deployment/tests -v",
+    "passed": 15,
+    "failed": 0
+  },
+  "relative_document_links": "PASS",
+  "json_parse": "PASS",
+  "git_diff_check": "PASS",
+  "tracked_changes": [
+    "investigations/07-safe-deployment/CI-CD.md",
+    "investigations/07-safe-deployment/README.md"
+  ],
+  "step01_to06_tracked_changes": false,
+  "preexisting_untracked_step06_outputs_preserved": true,
+  "staged_files": 0,
+  "observed_rollback_interval_seconds": 20.1,
+  "interval_limit": "Includes console observation delay; not exact recovery or ALB propagation time.",
+  "scan_scope": "STEP07 README, CI-CD and submitted evidence; targeted patterns, not all historical Git objects.",
+  "sensitive_patterns_found": [],
+  "identifiers_retained": "Commit SHA, digest, Pod names and repository URLs; dummy subnet IDs in local examples.",
+  "commit_or_push_performed": false
+}

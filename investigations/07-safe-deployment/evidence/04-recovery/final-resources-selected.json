@@ -1,0 +1,208 @@
+{
+  "note": "최종 kubectl 조회에서 필요한 필드만 선별. AWS Target Health API 응답이 아님.",
+  "resources": [
+    {
+      "kind": "Deployment",
+      "name": "aegis-api-blue",
+      "namespace": "aegis",
+      "replicas": 2,
+      "readyReplicas": 2,
+      "availableReplicas": 2,
+      "containers": [
+        {
+          "env": [
+            {
+              "name": "APP_VERSION",
+              "value": "17ea0b4-blue"
+            },
+            {
+              "name": "APP_SLOT",
+              "value": "blue"
+            },
+            {
+              "name": "INJECT_API_FAILURE",
+              "value": "0"
+            }
+          ],
+          "image": "<AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/aegis-api@sha256:a864b600e8bda071860db5b019b591be7bf45071fcc57c59c32c07fa1ea66ff2",
+          "livenessProbe": {
+            "failureThreshold": 3,
+            "httpGet": {
+              "path": "/healthz",
+              "port": "http",
+              "scheme": "HTTP"
+            },
+            "initialDelaySeconds": 10,
+            "periodSeconds": 10,
+            "successThreshold": 1,
+            "timeoutSeconds": 1
+          },
+          "name": "api",
+          "readinessProbe": {
+            "failureThreshold": 3,
+            "httpGet": {
+              "path": "/readyz",
+              "port": "http",
+              "scheme": "HTTP"
+            },
+            "periodSeconds": 5,
+            "successThreshold": 1,
+            "timeoutSeconds": 1
+          },
+          "resources": {
+            "limits": {
+              "cpu": "250m",
+              "memory": "128Mi"
+            },
+            "requests": {
+              "cpu": "50m",
+              "memory": "64Mi"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "kind": "Deployment",
+      "name": "aegis-api-green",
+      "namespace": "aegis",
+      "replicas": 2,
+      "readyReplicas": 2,
+      "availableReplicas": 2,
+      "containers": [
+        {
+          "env": [
+            {
+              "name": "APP_VERSION",
+              "value": "17ea0b4-green"
+            },
+            {
+              "name": "APP_SLOT",
+              "value": "green"
+            },
+            {
+              "name": "INJECT_API_FAILURE",
+              "value": "0"
+            }
+          ],
+          "image": "<AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/aegis-api@sha256:a864b600e8bda071860db5b019b591be7bf45071fcc57c59c32c07fa1ea66ff2",
+          "livenessProbe": {
+            "failureThreshold": 3,
+            "httpGet": {
+              "path": "/healthz",
+              "port": "http",
+              "scheme": "HTTP"
+            },
+            "initialDelaySeconds": 10,
+            "periodSeconds": 10,
+            "successThreshold": 1,
+            "timeoutSeconds": 1
+          },
+          "name": "api",
+          "readinessProbe": {
+            "failureThreshold": 3,
+            "httpGet": {
+              "path": "/readyz",
+              "port": "http",
+              "scheme": "HTTP"
+            },
+            "periodSeconds": 5,
+            "successThreshold": 1,
+            "timeoutSeconds": 1
+          },
+          "resources": {
+            "limits": {
+              "cpu": "250m",
+              "memory": "128Mi"
+            },
+            "requests": {
+              "cpu": "50m",
+              "memory": "64Mi"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "kind": "Service",
+      "name": "aegis-api-blue",
+      "namespace": "aegis",
+      "selector": {
+        "app": "aegis-api-step07",
+        "slot": "blue"
+      },
+      "ports": [
+        {
+          "name": "http",
+          "port": 8080,
+          "protocol": "TCP",
+          "targetPort": "http"
+        }
+      ],
+      "type": "ClusterIP"
+    },
+    {
+      "kind": "Service",
+      "name": "aegis-api-green",
+      "namespace": "aegis",
+      "selector": {
+        "app": "aegis-api-step07",
+        "slot": "green"
+      },
+      "ports": [
+        {
+          "name": "http",
+          "port": 8080,
+          "protocol": "TCP",
+          "targetPort": "http"
+        }
+      ],
+      "type": "ClusterIP"
+    },
+    {
+      "kind": "Ingress",
+      "name": "aegis-api",
+      "namespace": "aegis",
+      "action": {
+        "type": "forward",
+        "forwardConfig": {
+          "targetGroups": [
+            {
+              "serviceName": "aegis-api-blue",
+              "servicePort": 8080,
+              "weight": 100
+            },
+            {
+              "serviceName": "aegis-api-green",
+              "servicePort": 8080,
+              "weight": 0
+            }
+          ],
+          "targetGroupStickinessConfig": {
+            "enabled": false
+          }
+        }
+      }
+    },
+    {
+      "kind": "TargetGroupBinding",
+      "name": "k8s-aegis-aegisapi-8ba527bfa3",
+      "namespace": "aegis",
+      "serviceRef": {
+        "name": "aegis-api-blue",
+        "port": 8080
+      },
+      "targetType": "ip"
+    },
+    {
+      "kind": "TargetGroupBinding",
+      "name": "k8s-aegis-aegisapi-ad8fe218c2",
+      "namespace": "aegis",
+      "serviceRef": {
+        "name": "aegis-api-green",
+        "port": 8080
+      },
+      "targetType": "ip"
+    }
+  ]
+}

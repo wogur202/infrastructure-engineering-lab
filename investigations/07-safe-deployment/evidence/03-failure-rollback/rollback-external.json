@@ -1,0 +1,249 @@
+[
+  {
+    "time": 1795357553.025376,
+    "path": "/healthz",
+    "status": 200,
+    "body": {
+      "status": "ok"
+    }
+  },
+  {
+    "time": 1795357553.051633,
+    "path": "/readyz",
+    "status": 200,
+    "body": {
+      "status": "ok"
+    }
+  },
+  {
+    "time": 1795357553.078609,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.103141,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.129262,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-pxpdd"
+    }
+  },
+  {
+    "time": 1795357553.155482,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.183421,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-pxpdd"
+    }
+  },
+  {
+    "time": 1795357553.20898,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-pxpdd"
+    }
+  },
+  {
+    "time": 1795357553.237886,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.2644138,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.2875159,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-pxpdd"
+    }
+  },
+  {
+    "time": 1795357553.312663,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-pxpdd"
+    }
+  },
+  {
+    "time": 1795357553.3379478,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.364147,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.390059,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-pxpdd"
+    }
+  },
+  {
+    "time": 1795357553.419949,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-pxpdd"
+    }
+  },
+  {
+    "time": 1795357553.445156,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.4675572,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-pxpdd"
+    }
+  },
+  {
+    "time": 1795357553.4928691,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.5412412,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.5633101,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-pxpdd"
+    }
+  },
+  {
+    "time": 1795357553.61011,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-vc7xq"
+    }
+  },
+  {
+    "time": 1795357553.634612,
+    "path": "/api/info",
+    "status": 200,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-blue",
+      "slot": "blue",
+      "hostname": "aegis-api-blue-8647f45859-pxpdd"
+    }
+  }
+]

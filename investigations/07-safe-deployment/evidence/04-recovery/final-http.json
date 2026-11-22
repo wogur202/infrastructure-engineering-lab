@@ -1,0 +1,11 @@
+{
+  "time": 1795357603.6976829,
+  "path": "/api/info",
+  "status": 200,
+  "body": {
+    "service": "aegis-api",
+    "version": "17ea0b4-blue",
+    "slot": "blue",
+    "hostname": "aegis-api-blue-8647f45859-vc7xq"
+  }
+}

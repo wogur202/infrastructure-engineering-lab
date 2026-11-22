@@ -1,0 +1,56 @@
+{
+  "aegis-api-green-c6df85fb4-kfvsj-fault.json": [
+    {
+      "path": "/healthz",
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    {
+      "path": "/readyz",
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    {
+      "path": "/api/info",
+      "status": 503,
+      "body": {
+        "service": "aegis-api",
+        "version": "17ea0b4-green",
+        "slot": "green",
+        "hostname": "aegis-api-green-c6df85fb4-kfvsj",
+        "error": "injected API failure"
+      }
+    }
+  ],
+  "aegis-api-green-c6df85fb4-zrdrc-fault.json": [
+    {
+      "path": "/healthz",
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    {
+      "path": "/readyz",
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    {
+      "path": "/api/info",
+      "status": 503,
+      "body": {
+        "service": "aegis-api",
+        "version": "17ea0b4-green",
+        "slot": "green",
+        "hostname": "aegis-api-green-c6df85fb4-zrdrc",
+        "error": "injected API failure"
+      }
+    }
+  ]
+}

@@ -1,6 +1,72 @@
-# STEP 07-A — 안전한 배포를 위한 로컬 준비
+# STEP 07 — ALB Blue/Green 전환과 업무 API 장애 복구
 
-STEP 06의 VPC/EKS/ECR과 Python API를 바탕으로 Blue/Green 배포에 필요한 파일을 별도 경로에 준비했다. 아래 내용은 7-A 완료 시점의 기록이다. 이후 7-B에서는 Workflow와 수동 Publish/Green 준비 코드를 추가하고 로컬 Docker 검증까지 수행했다. 최신 범위와 제한은 [CI-CD.md](CI-CD.md)를 참고한다. AWS 배포, OIDC 역할 생성, GitHub Workflow 실행과 실제 트래픽 전환은 수행하지 않았다.
+배포가 완료되고 ALB Target이 Healthy여도 실제 업무 API가 실패할 수 있는지 실험했다. STEP 06의 Terraform 기반 EKS 환경을 재구축하고, GitHub Actions에서 게시한 이미지를 두 슬롯에 배치했다. 정상 Green 전환 후 Green의 업무 API만 503으로 만들고 ALB 가중치를 Blue로 되돌려 정상 응답을 확인했다.
+
+GitHub에서는 CI와 OIDC 기반 ECR 게시까지 실행했다. EKS 배포·트래픽 전환·복구는 기존 Mac에서 수동으로 수행했다. 자동 CD나 자동 Rollback을 구현한 것은 아니다. 상세 흐름은 [CI-CD.md](CI-CD.md), 제출용 원본 선별 기준은 [증빙 안내](evidence/README.md)를 참고한다.
+
+## 0. 실제 AWS 실험 결과 — 2026-11-22
+
+### 구성과 정상 전환
+
+`GitHub Actions → GitHub OIDC/STS → ECR → Mac 수동 배포 → EKS Blue/Green → ALB Weighted Forward` 구조다. 기존 Terraform 코드로 VPC·Public/Private Subnet·NAT·EKS·2노드 Node Group을 준비했고, AWS Load Balancer Controller Helm Chart/App `3.6.3`을 사용했다. Controller와 애플리케이션은 각각 2개 Pod로 실행했다.
+
+초기 Blue 100 / Green 0에서 두 슬롯의 Target Healthy 2/2와 개별 Pod 응답을 확인했다. Ingress의 Weighted Action 두 가중치만 바꿔 Green 100 / Blue 0으로 전환했다. Kubernetes의 의도한 설정과 AWS 콘솔의 실제 Listener Rule을 따로 확인했다. [Blue 외부 요청](evidence/02-blue-green/normal-blue-http.json)과 [Green 외부 요청](evidence/02-blue-green/normal-green-http.json)은 각 슬롯에서 업무 API 21회(최초 1회 + 추가 20회) 모두 200이었다. [재실험 전 Green 기준선](evidence/02-blue-green/retry-green-baseline.json)도 업무 API 11회 모두 Green 200이었다.
+
+사용한 이미지는 두 슬롯 모두 `aegis-api@sha256:a864b600e8bda071860db5b019b591be7bf45071fcc57c59c32c07fa1ea66ff2`다. 응답의 `version`은 환경변수로 `17ea0b4-blue`, `17ea0b4-green`을 지정했다. 서로 다른 이미지 버전 배포로 해석하면 안 된다.
+
+### 장애 주입과 복구
+
+| 관측 지점 | 실제 결과 | 증빙 |
+|---|---|---|
+| 장애 Green의 개별 Pod 2개 | `/healthz` 200, `/readyz` 200, `/api/info` 503 | [Pod별 응답](evidence/03-failure-rollback/fault-individual-pods.json) |
+| Kubernetes | 현재 ReplicaSet의 활성 Pod 2개 Ready, EndpointSlice IP 일치 | [활성 Pod 관측](evidence/03-failure-rollback/fault-active-observations.json) |
+| ALB | 신규 Green IP 2개 Healthy, Green 100 / Blue 0 | [콘솔 관측 기록](evidence/03-failure-rollback/console-fault-observation.json) |
+| 외부 ALB | Health/Readiness 200, 업무 API 11회 모두 503 | [외부 장애 응답](evidence/03-failure-rollback/fault-external.json) |
+| 가중치 복귀 | Blue 100 / Green 0 실제 Rule 확인 | [콘솔 관측 기록](evidence/03-failure-rollback/console-rollback-observation.json) |
+| 외부 복구 | 업무 API 최초 1회 + 추가 20회 모두 예상 Blue 버전·200, 연결 오류 없음 | [복구 응답](evidence/03-failure-rollback/rollback-external.json) |
+| Green 원복 | `INJECT_API_FAILURE=0`, 개별 Pod 업무 API 200, 원래 Deployment spec과 일치 | [원복 Pod 응답](evidence/04-recovery/restored-individual-pods.json) |
+| 최종 상태 | 양쪽 Target Healthy 2/2, Blue 100 / Green 0, 외부 Blue 200 | [Target 콘솔 기록](evidence/04-recovery/console-restored-health-observation.json), [선별 리소스](evidence/04-recovery/final-resources-selected.json), [최종 HTTP](evidence/04-recovery/final-http.json) |
+
+Green Deployment의 `INJECT_API_FAILURE`만 `0→1`로 바꿨다. 헬스 경로가 그대로 200이므로 Pod Ready와 ALB Healthy가 유지됐지만 업무 요청은 실패했다. 외부 503을 확인한 직후 Ingress의 가중치만 Blue로 되돌렸고, 정상 응답 확인 후 Green 환경변수를 원복했다. Blue Deployment와 이미지는 변경하지 않았다.
+
+### 첫 시도에서 발견한 관측 오류
+
+첫 시도는 Green RollingUpdate 직후 `len(pods)==2` 검사에서 중단됐다. 라벨 조회에 종료 중인 이전 Pod도 포함됐기 때문이다. 이때는 외부 503과 Target Health를 함께 확인하기 전이므로 완료로 기록하지 않았다. 안전 복구 로직으로 Blue 100과 Green 정상 설정을 복원했다. [오류](evidence/03-failure-rollback/first-attempt-error.json), [첫 시도 타임라인](evidence/03-failure-rollback/first-attempt-timeline.json)을 남겼다.
+
+재실험에서는 Deployment revision과 OwnerReference UID로 현재 ReplicaSet을 찾고, `deletionTimestamp`가 없는 활성 Pod만 셌다. Ready·전체 컨테이너 Ready·이미지 Digest·Deployment의 updated/ready/available Replicas·observedGeneration·EndpointSlice IP를 대조했다. 안정화 대기는 최대 120초로 제한하고 명백한 실패는 즉시 중단하도록 했다. 이 관측 보완은 실행용 임시 스크립트에 적용했으며 저장소의 앱·Manifest를 변경하지 않았다.
+
+### 관측 타임라인
+
+아래 시각은 모두 2026-11-22이며 [UTC/KST 타임라인 원본 사본](evidence/03-failure-rollback/timeline.json)과 대조했다.
+
+| 이벤트 | UTC | KST |
+|---|---|---|
+| Green 장애 Patch 수락 | 14:24:46.548 | 23:24:46.548 |
+| Green rollout 완료 | 14:24:58.620 | 23:24:58.620 |
+| 신규 Target Healthy 확인 게이트 통과 | 14:25:31.642 | 23:25:31.642 |
+| 외부 업무 API 503 반복 확인 | 14:25:32.006 | 23:25:32.006 |
+| Blue Rollback Patch 수락 | 14:25:32.919 | 23:25:32.919 |
+| AWS Rule 반영 확인 게이트 통과 | 14:25:52.985 | 23:25:52.985 |
+| 최초 외부 Blue 200 관측 | 14:25:53.016 | 23:25:53.016 |
+| Green 원복 rollout 완료 | 14:26:06.716 | 23:26:06.716 |
+| 최종 Blue 정상 확인 | 14:26:43.720 | 23:26:43.720 |
+
+Patch 수락부터 최초 Blue 200 관측까지 약 **20.10초**였다. AWS 콘솔 확인 대기가 포함된 관측 간격이다. 연속 부하를 주며 측정한 순수 ALB 전파시간이나 정확한 장애 복구시간은 아니다. 콘솔 관련 게이트 시각도 실제 AWS 상태가 최초 변경된 시각을 의미하지 않는다.
+
+### 판단과 검증 한계
+
+Pod Ready, ALB Target Healthy, 실제 사용자 응답은 별개의 관측 대상이었다. `/healthz`만 확인하면 이번 업무 API 장애를 놓쳤다. 배포 후 업무 경로 Smoke Test가 필요하고, 복구도 설정 변경에서 끝내지 않고 실제 응답까지 확인해야 한다.
+
+- 이번 실험은 **동일 이미지 Digest의 슬롯 전환**이다. 서로 다른 앱 이미지 버전 간 Rollback을 검증하지 않았다.
+- ALB Target Health와 Rule은 관리자 AWS 콘솔에서 직접 확인했다. 제출 파일은 당시의 관측 기록이며 `describe-target-health` API 원본이나 화면 캡처가 아니다. CLI 조회 권한은 확대하지 않았다.
+- 순차 요청의 관측 결과다. 지속 부하·동시 요청·장기 안정성·무중단 보장은 검증하지 않았다.
+- CI/ECR 게시에는 독립 배포 승인자 보호가 없고, 수동 CD 및 수동 Rollback이다.
+- [STEP 06](../06-aws-eks-infrastructure/README.md)의 인프라 코드를 재사용했다. 재구축으로 새 ALB가 생성됐으며 이전 실험의 ALB 실물을 재사용한 것은 아니다.
+- [STEP 05](../05-spot-graceful-shutdown/README.md)의 SIGTERM·Drain 실험과 달리 이번에는 활성 슬롯 종료 실험을 반복하지 않았다. [STEP 02](../02-linux-oom-cgroup/README.md)의 OOM을 장애 원인으로 사용하지 않았다.
+
+증빙 정리 시점에는 EKS·노드·NAT·ALB가 실행 중이다. 삭제 완료를 의미하지 않으며 비용 정리는 별도 검증할 작업이다. ECR 이미지와 GitHub 게시 인증은 보존 대상이다.
+
+아래 1~7절은 초기 로컬 준비 방법과 설계 판단이다. 실제 AWS 검증 여부는 위 결과와 [CI-CD.md](CI-CD.md)를 기준으로 읽는다.
 
 ## 1. 파일 구성과 기존 환경 보존
 
@@ -13,7 +79,7 @@ STEP 06의 VPC/EKS/ECR과 Python API를 바탕으로 Blue/Green 배포에 필요
 | `k8s/ingress.yaml` | 기존 이름의 Ingress에 적용할 Weighted Forward Action 템플릿 |
 | `tests/test_local.py` | 루프백 HTTP 테스트와 렌더링·선택자·가중치 검사 |
 
-기존 STEP 01~06의 파일·증빙은 수정하지 않는다. 시작 시 STEP 06 `terraform/outputs.tf`가 미추적 사용자 파일로 존재했으며 그대로 보존한다. Namespace `aegis`도 재사용하므로 새 Namespace Manifest는 만들지 않았다.
+기존 STEP 01~06의 파일·증빙은 수정하지 않는다. 시작 시 STEP 06 `terraform/outputs.tf`가 미추적 사용자 파일로 존재했으며 그대로 보존한다. Namespace 이름 `aegis`를 유지하며 별도 Namespace Manifest는 만들지 않았다. 실제 재구축 시에는 Namespace가 없어 `aegis`를 먼저 생성했다.
 
 새 Pod의 공통 라벨은 `app: aegis-api-step07`이고 슬롯은 `slot: blue|green`이다. STEP 06 Service의 기존 선택자 `app: aegis-api`가 새 Pod까지 선택하는 일을 막는다. Deployment 선택자, Pod 라벨, Service 선택자, Topology Spread 선택자를 슬롯별로 맞췄다. 기존 Deployment의 불변 selector는 변경하지 않는다.
 
@@ -93,7 +159,7 @@ python3 scripts/render.py \
 
 문법 근거: [AWS Load Balancer Controller의 Custom Action 문서](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/ingress/annotations/), [ALB Forward Action 문서](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/rule-action-types.html).
 
-**Ingress 이름은 STEP 06과 같은 `aegis-api`다.** 향후 이 파일을 적용하면 기존 Ingress의 Backend를 변경한다. 새 Ingress를 하나 더 생성하는 설계가 아니며, 현재 단계에서는 적용하지 않았다. 기존 Ingress의 관리 이력과 Annotation을 확인해야 같은 ALB를 재사용할 수 있다. 기존 단일 Service로 돌리는 첫 전환 복원과, 두 슬롯 구성 후 가중치만 되돌리는 Rollback은 구분해야 한다.
+**Ingress 이름은 STEP 06과 같은 `aegis-api`다.** 기존 클러스터라면 이 파일이 같은 이름의 Ingress Backend를 변경하므로 관리 이력과 Annotation을 먼저 확인해야 한다. 이번 재구축에서는 기존 Ingress가 없어 새로 생성했다. 이후 Blue/Green 전환과 복구에서는 이 Ingress와 ALB를 그대로 유지하고 가중치만 바꿨다. 기존 단일 Service로 되돌리는 복원과 두 슬롯 사이의 가중치 Rollback은 구분한다.
 
 향후 적용 전에는 다음을 확인한다.
 
@@ -103,11 +169,11 @@ python3 scripts/render.py \
 4. 최초 Ingress 변경에서 Target Group 생성·등록·Healthy 전환 지연 측정. Blue 100이라는 설정만으로 최초 변경의 무중단을 보장하지 않음.
 5. 두 슬롯 운영 이후에는 Ingress Action 가중치를 변경하고, 실패 시 이전 정상 슬롯 가중치와 업무 응답을 복원·검증. ALB 직접 수정과 Controller의 조정을 혼용하지 않음.
 
-ALB는 가중치가 있는 그룹이 비정상이거나 비어 있어도 다른 그룹으로 자동 Failover하지 않는다. 이 실험에서는 Health Check가 정상이면서 API가 실패하므로 업무 Smoke Test가 필수다. 실제 가중치 적용, 전파 지연, 연결 배제 시간과 정확한 복구 시간은 아직 미검증이다.
+ALB는 가중치가 있는 그룹이 비정상이거나 비어 있어도 다른 그룹으로 자동 Failover하지 않는다. 이 실험에서는 Health Check가 정상이면서 API가 실패하므로 업무 Smoke Test가 필수다. 7-C/7-D에서 실제 가중치 전환과 외부 응답을 검증했다. 순수 전파 지연, 연결 배제 시간과 정확한 복구 시간은 측정하지 않았다.
 
 기존 Probe·Requests/Limits·보안 설정은 재사용했다. SIGTERM 요청 완료 대기, preStop, 명시적 종료 유예, Pod Readiness Gate, HPA는 추가하지 않았다. STEP 05 종료 실험이나 STEP 06 Pod 삭제 실험은 반복하지 않는다. 실제 활성 슬롯 종료 검증 전에는 종료 처리와 ALB 등록 해제 지연을 별도로 검토한다.
 
-## 5. 코드에 근거한 재구축 순서 — 실행하지 않음
+## 5. 코드에 근거한 재구축 순서
 
 | 순서 | 관리 주체와 준비 항목 |
 |---|---|
@@ -118,17 +184,17 @@ ALB는 가중치가 있는 그룹이 비정상이거나 비어 있어도 다른 
 | 5 | Output JSON의 Public Subnet ID와 이미지·버전·허용 CIDR로 STEP 07 Manifest 렌더링 |
 | 6 | 배포 권한과 네트워크 경로 확인 후 슬롯 Deployment/Service 준비, 업무 검증, 기존 Ingress 전환 검토 |
 
-이 표는 절차 설명이며 AWS/Helm/Terraform 실행 스크립트가 아니다. STEP 06의 Controller Helm 설치 Values 전체는 저장되어 있지 않아, 완전 자동 재구축이 구현된 상태는 아니다. Controller가 만드는 ALB/Target Group/Listener/관련 SG는 Terraform 직접 관리 리소스와 구분한다. 추후 삭제할 때도 Controller가 동작하는 동안 Ingress와 AWS 부속 리소스 정리를 확인해야 한다.
+이 표는 절차 설명이며 AWS/Helm/Terraform 실행 스크립트가 아니다. 7-C에서 사용한 Chart 3.6.3 Values는 비공개 원본 보관소에 남겼다. 실제 환경값의 주입과 수동 설치가 필요해 완전 자동 재구축은 아니다. Controller가 만드는 ALB/Target Group/Listener/관련 SG는 Terraform 직접 관리 리소스와 구분한다. 추후 삭제할 때도 Controller가 동작하는 동안 Ingress와 AWS 부속 리소스 정리를 확인해야 한다.
 
-## 6. 보안 확인과 STEP 07-B 착수 조건
+## 6. 초기 보안 확인과 CI 설계 조건
 
 민감 파일은 Git 파일명 기준으로만 확인한다. `terraform.tfvars`, `*.tfvars.json`, `*.tfplan`, `*.tfstate*`, AWS 자격 증명 경로, `.env*`, 개인 키 파일의 원문은 출력하지 않는다. 추적 문제가 발견되면 보고하고 임의 삭제나 Git 기록 변경은 하지 않는다. 파일명 검사만으로 저장소 전체의 비밀값 부재를 보장하지는 않는다.
 
-STEP 07-B에서는 Workflow와 GitHub OIDC 역할, EKS Access Entry/RBAC, Runner의 EKS/ALB 접근 경로, 실패 차단과 배포 동시 실행 제어를 설계해야 한다. 현재 EKS OIDC는 Pod IRSA용이며 GitHub 인증을 대신하지 않는다. ECR은 Immutable 태그이므로 Commit 태그 재실행 처리도 필요하다.
+7-B에서 Workflow·GitHub OIDC 게시 역할·실패 차단·동시 실행 제어를 구성했다. EKS는 기존 Mac에서 배포하며 GitHub Runner의 EKS 접근은 구성하지 않았다. 현재 EKS OIDC는 Pod IRSA용이며 GitHub 인증을 대신하지 않는다. ECR은 Immutable 태그이므로 Commit 태그 재실행 처리도 필요하다.
 
-**현재 판정: 로컬 준비는 GO, 실제 CI/CD·ALB 전환은 CONDITIONAL GO.** 로컬 검증 결과는 AWS 통합 검증의 대체가 아니다. AWS API 호출, 이미지 Build/Push, Terraform init/apply/destroy, kubectl apply/delete, Helm install/upgrade, Git Commit/Push는 이번 작업에서 수행하지 않는다.
+**현재 판정: 7-A~7-D 실증 완료.** 독립 승인자 보호와 자동 CD는 구현하지 않았다. 7-E에서는 증빙을 정리하고 있으며 AWS 유료 리소스 정리는 별도 작업이다.
 
-## 7. 이번 로컬 검증 결과
+## 7. 초기 로컬 검증 기록
 
 2026-11-22 로컬 실행 기준으로 다음을 확인했다.
 
@@ -139,4 +205,4 @@ STEP 07-B에서는 Workflow와 GitHub OIDC 역할, EKS Access Entry/RBAC, Runner
 - 기존 STEP 06 Terraform의 `fmt -check -recursive` 통과. 초기화·Plan·Apply는 실행하지 않음.
 - STEP 01~06의 기존 파일 145개를 작업 전후 SHA-256으로 비교해 변경 없음 확인. `.terraform` 내부는 비교 대상에서 제외.
 - 민감 파일명 검사에서 추적 중인 대상 없음. 새 STEP 07 파일의 자격 증명 형식·로컬 절대경로 패턴 검사에서 일치 없음. 전체 Git 이력과 모든 종류의 비밀값을 검사한 결과는 아님.
-- Docker Build, Kubernetes 서버 스키마/Admission, ECR 이미지 존재, Controller/ALB 실제 동작, OIDC/CI는 미검증.
+- 위 목록은 7-A 시점의 검증 범위다. 이후 Docker/CI/OIDC/ECR/Controller/ALB 실제 검증 결과는 0절과 CI-CD 문서에 정리했다.

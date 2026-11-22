@@ -1,0 +1,14 @@
+{
+  "observed_utc": "2026-11-22T14:25:31.133872+00:00",
+  "method": "Native AWS console UI observation; target refresh clicked",
+  "green_healthy_ips": [
+    "POD_IP_2",
+    "POD_IP_1"
+  ],
+  "registered_port": 8080,
+  "old_targets": "Draining",
+  "listener_weights": {
+    "blue": 0,
+    "green": 100
+  }
+}

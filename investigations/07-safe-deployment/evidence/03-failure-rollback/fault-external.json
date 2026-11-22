@@ -1,0 +1,150 @@
+[
+  {
+    "time": 1795357531.652169,
+    "path": "/healthz",
+    "status": 200,
+    "body": {
+      "status": "ok"
+    }
+  },
+  {
+    "time": 1795357531.694675,
+    "path": "/readyz",
+    "status": 200,
+    "body": {
+      "status": "ok"
+    }
+  },
+  {
+    "time": 1795357531.7212968,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-zrdrc",
+      "error": "injected API failure"
+    }
+  },
+  {
+    "time": 1795357531.748739,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-kfvsj",
+      "error": "injected API failure"
+    }
+  },
+  {
+    "time": 1795357531.779207,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-kfvsj",
+      "error": "injected API failure"
+    }
+  },
+  {
+    "time": 1795357531.806088,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-zrdrc",
+      "error": "injected API failure"
+    }
+  },
+  {
+    "time": 1795357531.832493,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-zrdrc",
+      "error": "injected API failure"
+    }
+  },
+  {
+    "time": 1795357531.8575099,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-kfvsj",
+      "error": "injected API failure"
+    }
+  },
+  {
+    "time": 1795357531.8845382,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-zrdrc",
+      "error": "injected API failure"
+    }
+  },
+  {
+    "time": 1795357531.9104168,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-kfvsj",
+      "error": "injected API failure"
+    }
+  },
+  {
+    "time": 1795357531.936914,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-zrdrc",
+      "error": "injected API failure"
+    }
+  },
+  {
+    "time": 1795357531.9607282,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-kfvsj",
+      "error": "injected API failure"
+    }
+  },
+  {
+    "time": 1795357531.9855301,
+    "path": "/api/info",
+    "status": 503,
+    "body": {
+      "service": "aegis-api",
+      "version": "17ea0b4-green",
+      "slot": "green",
+      "hostname": "aegis-api-green-c6df85fb4-kfvsj",
+      "error": "injected API failure"
+    }
+  }
+]

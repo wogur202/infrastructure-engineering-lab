@@ -1,0 +1,13 @@
+{
+  "note": "GitHub Actions 로그의 선별 발췌. 전체 원본은 비공개로 보관.",
+  "lines": [
+    "ci\tSyntax, unit/integration tests, amd64 build and container smoke\t2026-11-22T09:19:11.4993991Z Ran 15 tests in 2.493s",
+    "publish\tBuild and test the exact local image to publish\t2026-11-22T09:19:33.3530507Z Ran 15 tests in 2.567s",
+    "publish\tAssume short-lived ECR-only publishing role\t2026-11-22T09:19:38.9003225Z Assuming role with OIDC",
+    "publish\tAssume short-lived ECR-only publishing role\t2026-11-22T09:19:39.5162431Z Authenticated as assumedRoleId <ASSUMED_ROLE_ID>:step07-45006939590",
+    "publish\tPush or reuse immutable commit tag and resolve digest\t2026-11-22T09:19:55.0961346Z Digest: sha256:a864b600e8bda071860db5b019b591be7bf45071fcc57c59c32c07fa1ea66ff2",
+    "publish\tPush or reuse immutable commit tag and resolve digest\t2026-11-22T09:19:56.2439186Z Published or reused immutable image: <AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/aegis-api@sha256:a864b600e8bda071860db5b019b591be7bf45071fcc57c59c32c07fa1ea66ff2"
+  ],
+  "image_digest": "sha256:a864b600e8bda071860db5b019b591be7bf45071fcc57c59c32c07fa1ea66ff2",
+  "ecr_publish_enabled_after_run": false
+}

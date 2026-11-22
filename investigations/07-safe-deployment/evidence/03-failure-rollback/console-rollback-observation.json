@@ -1,0 +1,8 @@
+{
+  "observed_utc": "2026-11-22T14:25:52.771451+00:00",
+  "method": "Native AWS console rule refresh",
+  "weights": {
+    "blue": 100,
+    "green": 0
+  }
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "utc": "2026-11-22T14:25:00.459543+00:00",
+    "active": [
+      "aegis-api-green-c6df85fb4-kfvsj",
+      "aegis-api-green-c6df85fb4-zrdrc"
+    ],
+    "terminating": [
+      "aegis-api-green-65454975c-6grj4",
+      "aegis-api-green-65454975c-f5str"
+    ],
+    "endpoints": [
+      "POD_IP_1",
+      "POD_IP_2"
+    ],
+    "stable": true
+  }
+]

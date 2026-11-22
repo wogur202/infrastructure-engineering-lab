@@ -1,0 +1,184 @@
+{
+  "databaseId": 45006939590,
+  "headSha": "17ea0b4eeb2c2e4409636264c5307dd33f3edf6c",
+  "event": "workflow_dispatch",
+  "status": "completed",
+  "conclusion": "success",
+  "url": "https://github.com/wogur202/infrastructure-engineering-lab/actions/runs/45006939590",
+  "jobs": [
+    {
+      "completedAt": "2026-11-22T09:19:23Z",
+      "conclusion": "success",
+      "databaseId": 137160520935,
+      "name": "ci",
+      "startedAt": "2026-11-22T09:19:05Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-22T09:19:07Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-22T09:19:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:08Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "number": 2,
+          "startedAt": "2026-11-22T09:19:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:08Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+          "number": 3,
+          "startedAt": "2026-11-22T09:19:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:22Z",
+          "conclusion": "success",
+          "name": "Syntax, unit/integration tests, amd64 build and container smoke",
+          "number": 4,
+          "startedAt": "2026-11-22T09:19:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:22Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+          "number": 7,
+          "startedAt": "2026-11-22T09:19:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:22Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "number": 8,
+          "startedAt": "2026-11-22T09:19:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:22Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 9,
+          "startedAt": "2026-11-22T09:19:22Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/wogur202/infrastructure-engineering-lab/actions/runs/45006939590/job/137160520935"
+    },
+    {
+      "completedAt": "2026-11-22T09:19:58Z",
+      "conclusion": "success",
+      "databaseId": 137160607181,
+      "name": "publish",
+      "startedAt": "2026-11-22T09:19:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-22T09:19:27Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-22T09:19:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:28Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "number": 2,
+          "startedAt": "2026-11-22T09:19:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:29Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+          "number": 3,
+          "startedAt": "2026-11-22T09:19:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:29Z",
+          "conclusion": "success",
+          "name": "Reject unconfigured cloud publishing",
+          "number": 4,
+          "startedAt": "2026-11-22T09:19:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:38Z",
+          "conclusion": "success",
+          "name": "Build and test the exact local image to publish",
+          "number": 5,
+          "startedAt": "2026-11-22T09:19:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:39Z",
+          "conclusion": "success",
+          "name": "Assume short-lived ECR-only publishing role",
+          "number": 6,
+          "startedAt": "2026-11-22T09:19:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:56Z",
+          "conclusion": "success",
+          "name": "Push or reuse immutable commit tag and resolve digest",
+          "number": 7,
+          "startedAt": "2026-11-22T09:19:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:56Z",
+          "conclusion": "success",
+          "name": "Record deployment handoff (no EKS connection)",
+          "number": 8,
+          "startedAt": "2026-11-22T09:19:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:56Z",
+          "conclusion": "success",
+          "name": "Post Assume short-lived ECR-only publishing role",
+          "number": 14,
+          "startedAt": "2026-11-22T09:19:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:56Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+          "number": 15,
+          "startedAt": "2026-11-22T09:19:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:56Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "number": 16,
+          "startedAt": "2026-11-22T09:19:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-22T09:19:57Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 17,
+          "startedAt": "2026-11-22T09:19:56Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/wogur202/infrastructure-engineering-lab/actions/runs/45006939590/job/137160607181"
+    }
+  ]
+}

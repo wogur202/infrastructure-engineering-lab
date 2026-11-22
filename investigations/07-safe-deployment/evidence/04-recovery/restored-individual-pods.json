@@ -1,0 +1,54 @@
+{
+  "aegis-api-green-65454975c-j9cpz-restored.json": [
+    {
+      "path": "/healthz",
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    {
+      "path": "/readyz",
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    {
+      "path": "/api/info",
+      "status": 200,
+      "body": {
+        "service": "aegis-api",
+        "version": "17ea0b4-green",
+        "slot": "green",
+        "hostname": "aegis-api-green-65454975c-j9cpz"
+      }
+    }
+  ],
+  "aegis-api-green-65454975c-fzqkx-restored.json": [
+    {
+      "path": "/healthz",
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    {
+      "path": "/readyz",
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    {
+      "path": "/api/info",
+      "status": 200,
+      "body": {
+        "service": "aegis-api",
+        "version": "17ea0b4-green",
+        "slot": "green",
+        "hostname": "aegis-api-green-65454975c-fzqkx"
+      }
+    }
+  ]
+}

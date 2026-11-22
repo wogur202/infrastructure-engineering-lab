@@ -1,0 +1,27 @@
+[
+  {
+    "event": "baseline_verified",
+    "utc": "2026-11-22T14:17:52.646472+00:00",
+    "epoch": 1795357072.647014
+  },
+  {
+    "event": "green_failure_patch_accepted",
+    "utc": "2026-11-22T14:17:53.178406+00:00",
+    "epoch": 1795357073.178427
+  },
+  {
+    "event": "faulty_green_rollout_complete",
+    "utc": "2026-11-22T14:18:05.940654+00:00",
+    "epoch": 1795357085.940751
+  },
+  {
+    "event": "rollback_patch_accepted",
+    "utc": "2026-11-22T14:18:07.356507+00:00",
+    "epoch": 1795357087.356556
+  },
+  {
+    "event": "green_env_restored_rollout_complete",
+    "utc": "2026-11-22T14:18:16.897583+00:00",
+    "epoch": 1795357096.897623
+  }
+]
