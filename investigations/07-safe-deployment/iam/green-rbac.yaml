@@ -1,0 +1,118 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "Role",
+      "metadata": {
+        "name": "aegis-green-preparer",
+        "namespace": "aegis"
+      },
+      "rules": [
+        {
+          "apiGroups": [
+            "apps"
+          ],
+          "resources": [
+            "deployments"
+          ],
+          "resourceNames": [
+            "aegis-api-green"
+          ],
+          "verbs": [
+            "get",
+            "patch",
+            "watch"
+          ]
+        },
+        {
+          "apiGroups": [
+            "apps"
+          ],
+          "resources": [
+            "deployments"
+          ],
+          "resourceNames": [
+            "aegis-api-blue"
+          ],
+          "verbs": [
+            "get"
+          ]
+        },
+        {
+          "apiGroups": [
+            ""
+          ],
+          "resources": [
+            "services"
+          ],
+          "resourceNames": [
+            "aegis-api-green"
+          ],
+          "verbs": [
+            "get"
+          ]
+        },
+        {
+          "apiGroups": [
+            ""
+          ],
+          "resources": [
+            "pods"
+          ],
+          "verbs": [
+            "get",
+            "list",
+            "watch"
+          ]
+        },
+        {
+          "apiGroups": [
+            ""
+          ],
+          "resources": [
+            "pods/portforward"
+          ],
+          "verbs": [
+            "create"
+          ]
+        },
+        {
+          "apiGroups": [
+            "networking.k8s.io"
+          ],
+          "resources": [
+            "ingresses"
+          ],
+          "resourceNames": [
+            "aegis-api"
+          ],
+          "verbs": [
+            "get"
+          ]
+        }
+      ]
+    },
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "RoleBinding",
+      "metadata": {
+        "name": "aegis-green-preparer",
+        "namespace": "aegis"
+      },
+      "subjects": [
+        {
+          "kind": "Group",
+          "name": "aegis-green-deployers",
+          "apiGroup": "rbac.authorization.k8s.io"
+        }
+      ],
+      "roleRef": {
+        "kind": "Role",
+        "name": "aegis-green-preparer",
+        "apiGroup": "rbac.authorization.k8s.io"
+      }
+    }
+  ]
+}

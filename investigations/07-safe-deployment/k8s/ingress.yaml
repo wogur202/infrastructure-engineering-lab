@@ -1,0 +1,42 @@
+{
+  "apiVersion": "networking.k8s.io/v1",
+  "kind": "Ingress",
+  "metadata": {
+    "name": "aegis-api",
+    "namespace": "aegis",
+    "annotations": {
+      "alb.ingress.kubernetes.io/scheme": "internet-facing",
+      "alb.ingress.kubernetes.io/target-type": "ip",
+      "alb.ingress.kubernetes.io/subnets": "${PUBLIC_SUBNET_IDS}",
+      "alb.ingress.kubernetes.io/healthcheck-path": "/healthz",
+      "alb.ingress.kubernetes.io/healthcheck-port": "traffic-port",
+      "alb.ingress.kubernetes.io/success-codes": "200",
+      "alb.ingress.kubernetes.io/inbound-cidrs": "${ALLOWED_CIDR}",
+      "alb.ingress.kubernetes.io/listen-ports": "[{\"HTTP\":80}]",
+      "alb.ingress.kubernetes.io/actions.aegis-api-weighted": "{\"type\":\"forward\",\"forwardConfig\":{\"targetGroups\":[{\"serviceName\":\"aegis-api-blue\",\"servicePort\":8080,\"weight\":100},{\"serviceName\":\"aegis-api-green\",\"servicePort\":8080,\"weight\":0}],\"targetGroupStickinessConfig\":{\"enabled\":false}}}"
+    }
+  },
+  "spec": {
+    "ingressClassName": "alb",
+    "rules": [
+      {
+        "http": {
+          "paths": [
+            {
+              "path": "/",
+              "pathType": "Prefix",
+              "backend": {
+                "service": {
+                  "name": "aegis-api-weighted",
+                  "port": {
+                    "name": "use-annotation"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

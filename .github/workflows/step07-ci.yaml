@@ -1,0 +1,136 @@
+{
+  "name": "STEP 07 CI and manually approved ECR publish",
+  "on": {
+    "push": {
+      "branches": [
+        "main"
+      ],
+      "paths": [
+        "investigations/07-safe-deployment/**",
+        ".github/workflows/step07-ci.yaml"
+      ]
+    },
+    "pull_request": {
+      "paths": [
+        "investigations/07-safe-deployment/**",
+        ".github/workflows/step07-ci.yaml"
+      ]
+    },
+    "workflow_dispatch": {
+      "inputs": {
+        "publish_ecr": {
+          "description": "Publish to ECR after CI and protected Environment approval",
+          "type": "boolean",
+          "required": true,
+          "default": false
+        }
+      }
+    }
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "step07-${{ github.workflow }}-${{ github.ref }}",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "ci": {
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 15,
+      "env": {
+        "CI_IMAGE": "aegis-step07-ci:${{ github.sha }}"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+          "with": {
+            "python-version": "3.12"
+          }
+        },
+        {
+          "name": "Syntax, unit/integration tests, amd64 build and container smoke",
+          "run": "bash investigations/07-safe-deployment/scripts/ci.sh"
+        }
+      ]
+    },
+    "publish": {
+      "needs": [
+        "ci"
+      ],
+      "if": "${{ github.event_name == 'workflow_dispatch' && inputs.publish_ecr && github.ref == 'refs/heads/main' }}",
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 20,
+      "environment": "step07-ecr",
+      "permissions": {
+        "contents": "read",
+        "id-token": "write"
+      },
+      "env": {
+        "CI_IMAGE": "aegis-step07-ci:${{ github.sha }}",
+        "ECR_REGISTRY": "${{ vars.ECR_REGISTRY }}",
+        "ROLE_ARN": "${{ vars.AWS_PUBLISH_ROLE_ARN }}",
+        "PUBLISH_ENABLED": "${{ vars.ECR_PUBLISH_ENABLED }}",
+        "AWS_REGION": "ap-northeast-2"
+      },
+      "outputs": {
+        "image": "${{ steps.publish.outputs.image }}",
+        "version": "${{ steps.publish.outputs.version }}"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+          "with": {
+            "python-version": "3.12"
+          }
+        },
+        {
+          "name": "Reject unconfigured cloud publishing",
+          "shell": "bash",
+          "run": "set -euo pipefail\ntest \"$PUBLISH_ENABLED\" = \"true\" || { echo \"::error::Configure protected step07-ecr Environment before enabling ECR_PUBLISH_ENABLED\"; exit 1; }\ntest -n \"$ROLE_ARN\" && test -n \"$ECR_REGISTRY\" || { echo \"::error::Missing AWS_PUBLISH_ROLE_ARN or ECR_REGISTRY Environment variable\"; exit 1; }"
+        },
+        {
+          "name": "Build and test the exact local image to publish",
+          "run": "bash investigations/07-safe-deployment/scripts/ci.sh"
+        },
+        {
+          "name": "Assume short-lived ECR-only publishing role",
+          "uses": "aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100",
+          "with": {
+            "role-to-assume": "${{ env.ROLE_ARN }}",
+            "aws-region": "ap-northeast-2",
+            "role-session-name": "step07-${{ github.run_id }}",
+            "unset-current-credentials": true
+          }
+        },
+        {
+          "name": "Push or reuse immutable commit tag and resolve digest",
+          "id": "publish",
+          "shell": "bash",
+          "run": "python3 investigations/07-safe-deployment/scripts/publish.py --registry \"$ECR_REGISTRY\" --commit \"$GITHUB_SHA\" --local-image \"$CI_IMAGE\" --execute"
+        },
+        {
+          "name": "Record deployment handoff (no EKS connection)",
+          "shell": "bash",
+          "env": {
+            "IMAGE": "${{ steps.publish.outputs.image }}",
+            "VERSION": "${{ steps.publish.outputs.version }}"
+          },
+          "run": "printf \"Green preparation image: %s\\nAPP_VERSION: %s\\nNo Kubernetes deployment performed.\\n\" \"$IMAGE\" \"$VERSION\" >> \"$GITHUB_STEP_SUMMARY\""
+        }
+      ]
+    }
+  }
+}
