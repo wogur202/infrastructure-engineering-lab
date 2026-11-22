@@ -10,7 +10,7 @@
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "${VERIFIED_GITHUB_OIDC_SUBJECT}"
+          "token.actions.githubusercontent.com:sub": "repo:wogur202@162789945/infrastructure-engineering-lab@1452771896:ref:refs/heads/main"
         }
       }
     }

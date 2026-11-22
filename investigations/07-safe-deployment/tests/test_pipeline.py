@@ -28,7 +28,14 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("workflow_dispatch", publish["if"])
         self.assertIn("inputs.publish_ecr", publish["if"])
         self.assertIn("refs/heads/main", publish["if"])
-        self.assertEqual(publish["environment"], "step07-ecr")
+        self.assertNotIn("environment", publish)
+        trust = json.loads((ROOT / "iam/github-trust-policy.json").read_text())
+        conditions = trust["Statement"][0]["Condition"]
+        self.assertEqual(conditions, {"StringEquals": {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+            "token.actions.githubusercontent.com:sub":
+                "repo:wogur202@162789945/infrastructure-engineering-lab@1452771896:ref:refs/heads/main",
+        }})
         self.assertNotIn("id-token", workflow["permissions"])
         self.assertEqual(publish["permissions"]["id-token"], "write")
         for job in workflow["jobs"].values():

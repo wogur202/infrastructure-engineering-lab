@@ -1,6 +1,6 @@
 # STEP 07-B — CI와 승인 후 배포 준비
 
-기존 7-A API·Manifest·테스트를 재사용해 GitHub Actions CI와 수동 ECR Push, Mac의 수동 Green 준비 경로를 작성했다. 새 포트폴리오 단계나 컨트롤러는 추가하지 않았다. 이번 작업은 코드 작성과 로컬 검증까지이며, GitHub에서 Workflow를 실행하거나 AWS에 접속하지 않았다.
+기존 7-A API·Manifest·테스트를 재사용해 GitHub Actions CI와 수동 ECR Push, Mac의 수동 Green 준비 경로를 작성했다. 새 포트폴리오 단계나 컨트롤러는 추가하지 않았다. 최초 버전은 [GitHub CI 실행](https://github.com/wogur202/infrastructure-engineering-lab/actions/runs/44982579513)에서 성공했고 Publish는 건너뛰었다. 이후 ECR과 GitHub OIDC Provider를 준비했다. 아래 인증 조건 보완본은 아직 로컬 검증 단계이며 IAM 게시 역할 생성·실제 이미지 게시까지 검증한 상태는 아니다.
 
 ## 1. CI 실행 흐름
 
@@ -32,12 +32,12 @@ Publish Job은 아래 조건에서만 시작하도록 작성했다.
 
 - `workflow_dispatch`에서 `publish_ecr=true`를 명시.
 - 실행 Ref가 `main`이고 CI Job 성공.
-- `step07-ecr` Environment를 사용.
-- 해당 Environment에 `ECR_PUBLISH_ENABLED=true`, `ECR_REGISTRY`, `AWS_PUBLISH_ROLE_ARN` 설정. 미설정이면 인증 전에 실패.
+- Repository Variables에 `ECR_PUBLISH_ENABLED=true`, `ECR_REGISTRY`, `AWS_PUBLISH_ROLE_ARN` 설정. 미설정이면 인증 전에 실패.
+- Publish Job은 Environment를 참조하지 않는다. OIDC Subject가 Environment 형식으로 바뀌는 것을 피하고 IAM에서 `main` Ref를 정확히 제한한다.
 
-**Environment 이름만 Workflow에 적는 것으로 승인 보호가 활성화되지는 않는다.** 실제 사용 전 GitHub에서 Required Reviewers, 자기 승인 제한, main 배포 Branch 제한을 설정하고 지원되는 저장소/요금제인지 확인해야 한다. 설정이 완료된 뒤에만 활성화 변수를 켠다. 현재 이 설정과 AWS 역할은 생성·검증하지 않았으므로 클라우드 연동 준비가 완료된 상태가 아니다.
+현재 Private 저장소의 개인 실습에서는 Environment Required Reviewers에 의존하지 않는다. 게시자는 수동 실행과 기본 비활성화 설정으로 실행 의사를 표시하고, Workflow는 이벤트·입력·Branch를 검사한다. **독립적인 다른 사람의 승인 절차는 없다.** 이는 보호된 Environment 승인과 동등하지 않다. 저장소 공개 전환이나 요금제 변경은 하지 않았다. Repository Variables와 실제 IAM 역할을 준비·검증한 뒤에만 게시를 활성화한다.
 
-수동 승인 후의 코드 흐름은 로컬 이미지 재빌드·검증 → GitHub OIDC 임시 인증 → 기존 Commit 태그 조회 → ECR 로그인 → 필요 시 Push → 실제 Digest 조회 → 해당 Digest Pull·컨테이너 Smoke → Job Output과 Summary에 이미지 URI·버전 기록이다. Job 간에 로컬 Docker 이미지는 공유되지 않으므로 Publish Job 안에서 검사한 이미지를 Push한다.
+수동 실행 후의 코드 흐름은 로컬 이미지 재빌드·검증 → GitHub OIDC 임시 인증 → 기존 Commit 태그 조회 → ECR 로그인 → 필요 시 Push → 실제 Digest 조회 → 해당 Digest Pull·컨테이너 Smoke → Job Output과 Summary에 이미지 URI·버전 기록이다. Job 간에 로컬 Docker 이미지는 공유되지 않으므로 Publish Job 안에서 검사한 이미지를 Push한다.
 
 `scripts/publish.py`는 기본적으로 Plan 모드다. `--execute`가 없으면 AWS/Docker 명령을 실행하지 않는다. 실행 모드에서는 다음을 처리한다.
 
@@ -86,13 +86,21 @@ Commit 태그는 소스 식별자다. 현재 Base Image는 가변 태그이므�
 | 파일 | 요구사항 |
 |---|---|
 | `ecr-push-policy.json` | 인증 Token만 Resource `*`. Push/Pull/Digest 조회는 서울 `aegis-api` 저장소 ARN으로 제한 |
-| `github-trust-policy.json` | GitHub 전용 Provider, `aud=sts.amazonaws.com`, 실제로 확인한 `sub`와 정확히 일치 |
+| `github-trust-policy.json` | GitHub 전용 Provider, `aud=sts.amazonaws.com`, 확인한 저장소 OIDC 설정과 `main` Ref에서 도출한 예상 Subject에 정확히 일치. 실제 JWT 인증은 미검증 |
 | `eks-describe-policy.json` | `aegis-eks`의 `eks:DescribeCluster`만. GitHub ECR 전용 역할에 추가할 필요 없음 |
 | `green-rbac.yaml` | `aegis` Namespace의 Green Patch/Watch, Blue·Ingress 읽기, Service/Pod 조회·Port-forward. Ingress 변경·Blue Patch 권한 없음 |
 
 AWS 장기 Access Key는 사용하지 않는다. `id-token: write`는 OIDC Token 발급 권한이며 AWS 권한은 IAM 역할 정책으로 따로 제한한다. EKS의 기존 OIDC/IRSA Provider를 GitHub용으로 재사용할 수는 없다.
 
-**OIDC subject를 저장소 이름만 보고 추정하지 않는다.** 공식 문서에 따르면 저장소 생성 시점·설정에 따라 Immutable Owner/Repository ID가 포함될 수 있고 Environment 사용 여부도 형식에 영향을 준다. 승인된 인증 점검에서 실제 `iss/aud/sub`와 GitHub의 OIDC 설정을 확인해 `${VERIFIED_GITHUB_OIDC_SUBJECT}`를 채워야 한다. JWT 원문이나 Token은 로그·채팅·저장소에 남기지 않는다. 현재는 그 확인을 실행하지 않았으므로 신뢰 정책에 추측한 값을 고정하지 않았다.
+**OIDC Subject는 저장소 이름만 보고 정하지 않는다.** 저장소의 읽기 전용 OIDC 설정 조회에서 `use_default=true`, `use_immutable_subject=true`, 아래 Prefix를 확인했다. 공식 문서의 Immutable Subject와 Branch 규칙에 따라, Environment를 제거한 Publish Job의 예상 Subject는 다음과 같다.
+
+```text
+repo:wogur202@162789945/infrastructure-engineering-lab@1452771896:ref:refs/heads/main
+```
+
+신뢰 정책은 `StringEquals`로 이 Subject와 `aud=sts.amazonaws.com`을 모두 검사하고 와일드카드를 사용하지 않는다. Provider ARN의 AWS 계정 ID만 `${AWS_ACCOUNT_ID}`로 남겼다. **실제 JWT를 발급해 이 Subject가 나오는지 또는 STS 인증이 성공하는지는 아직 검증하지 않았다.** JWT 원문이나 Token은 로그·채팅·저장소에 남기지 않는다.
+
+IAM의 Branch 신뢰 조건은 `workflow_dispatch` 여부나 특정 Workflow 파일까지 제한하는 조건은 아니다. 같은 저장소 `main`의 다른 OIDC 권한 Workflow도 역할을 요청할 수 있다는 한계가 있다. 수동 실행 조건은 현재 Workflow가 검사하며, `main`에 대한 코드 변경 권한도 신뢰 범위에 포함된다.
 
 Mac CD의 별도 실행자 역할에는 EKS API 인증 모드의 Access Entry와 Kubernetes Group `aegis-green-deployers` 연결이 필요하다. 위 RoleBinding이 해당 그룹을 Namespace Role에 연결한다. 이는 IAM의 `DescribeCluster`와 별개다. 자동 인증을 위해 kubeconfig의 AWS CLI exec가 사용될 수 있으므로 실제 CD 실행은 AWS 인증을 포함한 클라우드 작업으로 취급한다. Role의 Pod Port-forward 권한은 Namespace 내 Pod에 적용되므로 범위와 실행자를 검토해야 한다.
 
@@ -105,7 +113,7 @@ Mac CD의 별도 실행자 역할에는 EKS API 인증 모드의 Access Entry와
 
 ## 6. 완료 범위와 남은 검증
 
-CI, 수동 Publish, 수동 Green 준비 코드는 작성했지만 GitHub에서 실행하거나 AWS/Kubernetes에 적용하지 않았다. 실제 OIDC Subject, IAM 역할, Environment 보호 설정·변수, ECR 상태, EKS Access Entry/RBAC와 접근 경로가 미설정/미검증이다. 따라서 **7-B 코드·로컬 검증 완료 / 클라우드 연동 CONDITIONAL GO**다. 실제 CI/CD 전체 성공으로 표현하지 않는다.
+최초 CI는 GitHub에서 성공했고 ECR·OIDC Provider 등록도 확인했다. 현재 main Subject 보완본은 로컬 검증만 수행했으며 아직 Commit/Push하지 않았다. 실제 JWT·STS 인증, ECR 게시 역할·Repository Variables, 이미지 Push, EKS Access Entry/RBAC와 접근 경로는 미설정/미검증이다. 따라서 **7-B CI 실증 완료 / ECR 게시 연동 CONDITIONAL GO**다. 실제 CI/CD 전체 성공으로 표현하지 않는다.
 
 2026-11-22 로컬 검증 결과:
 
@@ -113,6 +121,6 @@ CI, 수동 Publish, 수동 Green 준비 코드는 작성했지만 GitHub에서 �
 - `ci.sh` 전체 실행 성공: Python 검사 → 테스트 → `linux/amd64` Docker Build → 컨테이너 GET Smoke Test 3개 통과. 테스트 컨테이너는 제거했고 기존 실행 컨테이너 ID 집합은 유지됐다.
 - Ruby YAML과 Python JSON으로 Workflow 파싱 통과. `bash -n` 통과. `actionlint`가 없어 GitHub 전용 정적 검증은 미수행이며 도구를 추가 설치하지 않았다.
 - STEP 01~06의 기존 파일 145개를 초기 기준과 비교해 변경 없음. 기존 사용자 `outputs.tf` 유지. Git Add/Commit/Push 없음.
-- 실제 GitHub 실행, OIDC 인증, ECR Push/재실행 충돌, EKS Green 준비·RBAC, ALB Target 상태는 미검증.
+- 최초 버전 GitHub CI는 이후 성공 확인. 이번 main Subject 수정본의 GitHub 실행, 실제 OIDC 인증, ECR Push/재실행 충돌, EKS Green 준비·RBAC, ALB Target 상태는 미검증.
 
 이번 7-B에서 추가한 파일은 루트 Workflow 1개, `scripts/ci.sh`, `scripts/container_smoke.py`, `scripts/publish.py`, `scripts/prepare_green.py`, `tests/test_pipeline.py`, `iam/` 템플릿 4개와 이 문서다. 기존 `README.md`에는 7-B 문서 연결만 보완했다. Git에 추가할 경우에도 민감 입력·렌더링 결과는 제외하고 이 소스 파일만 검토한다.

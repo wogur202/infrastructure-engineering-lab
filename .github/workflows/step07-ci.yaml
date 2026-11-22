@@ -1,5 +1,5 @@
 {
-  "name": "STEP 07 CI and manually approved ECR publish",
+  "name": "STEP 07 CI and manual ECR publish",
   "on": {
     "push": {
       "branches": [
@@ -19,7 +19,7 @@
     "workflow_dispatch": {
       "inputs": {
         "publish_ecr": {
-          "description": "Publish to ECR after CI and protected Environment approval",
+          "description": "Manually publish to ECR after CI; no independent reviewer approval",
           "type": "boolean",
           "required": true,
           "default": false
@@ -67,7 +67,6 @@
       "if": "${{ github.event_name == 'workflow_dispatch' && inputs.publish_ecr && github.ref == 'refs/heads/main' }}",
       "runs-on": "ubuntu-latest",
       "timeout-minutes": 20,
-      "environment": "step07-ecr",
       "permissions": {
         "contents": "read",
         "id-token": "write"
@@ -99,7 +98,7 @@
         {
           "name": "Reject unconfigured cloud publishing",
           "shell": "bash",
-          "run": "set -euo pipefail\ntest \"$PUBLISH_ENABLED\" = \"true\" || { echo \"::error::Configure protected step07-ecr Environment before enabling ECR_PUBLISH_ENABLED\"; exit 1; }\ntest -n \"$ROLE_ARN\" && test -n \"$ECR_REGISTRY\" || { echo \"::error::Missing AWS_PUBLISH_ROLE_ARN or ECR_REGISTRY Environment variable\"; exit 1; }"
+          "run": "set -euo pipefail\ntest \"$PUBLISH_ENABLED\" = \"true\" || { echo \"::error::Configure repository publishing variables before enabling ECR_PUBLISH_ENABLED\"; exit 1; }\ntest -n \"$ROLE_ARN\" && test -n \"$ECR_REGISTRY\" || { echo \"::error::Missing AWS_PUBLISH_ROLE_ARN or ECR_REGISTRY Repository variable\"; exit 1; }"
         },
         {
           "name": "Build and test the exact local image to publish",
