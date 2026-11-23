@@ -1,0 +1,29 @@
+.local/
+evidence/private/
+evidence/local/
+terraform/.state/
+*.log
+__pycache__/
+# These patterns supplement the dedicated private directories; they do not
+# detect every secret. Keep all actual kubeconfigs/tokens/Helm Secret renders private.
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.plan
+*.plan.*
+*.backup
+secret.yaml
+secret.yml
+secret.json
+secrets.yaml
+secrets.yml
+secrets.json
+*-secret.yaml
+*-secret.yml
+*-secret.json
+*.token
+token.json
+tokens.json

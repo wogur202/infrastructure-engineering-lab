@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: oom-128
+  namespace: aegis-step08
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 60
+  template:
+    metadata:
+      labels:
+        experiment: oom
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      nodeSelector:
+        aegis.lab/role: api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: memory
+        image: invalid.local/step08/not-built:blocked
+        command:
+        - python
+        - -u
+        - memory_job.py
+        args:
+        - --mib
+        - '192'
+        - --step-mib
+        - '16'
+        - --hold-seconds
+        - '10'
+        - --max-seconds
+        - '50'
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+            ephemeral-storage: 16Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+            ephemeral-storage: 32Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL

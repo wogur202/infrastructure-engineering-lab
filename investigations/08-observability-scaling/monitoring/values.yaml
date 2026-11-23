@@ -1,0 +1,167 @@
+fullnameOverride: step08-monitoring
+defaultRules:
+  create: false
+alertmanager:
+  enabled: false
+kubeApiServer:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+coreDns:
+  enabled: false
+kubeDns:
+  enabled: false
+windowsMonitoring:
+  enabled: false
+kubelet:
+  enabled: true
+  serviceMonitor:
+    cAdvisor: true
+    cAdvisorInterval: 15s
+    interval: 15s
+    probes: false
+    tlsConfig:
+      insecureSkipVerify: false
+    cAdvisorMetricRelabelings:
+    - sourceLabels:
+      - namespace
+      action: keep
+      regex: aegis-step08|aegis-step08-monitoring|kube-system
+    - sourceLabels:
+      - __name__
+      action: keep
+      regex: container_cpu_(usage_seconds_total|cfs_periods_total|cfs_throttled_periods_total|cfs_throttled_seconds_total)|container_memory_(working_set_bytes|rss|usage_bytes)|container_oom_events_total
+grafana:
+  testFramework:
+    enabled: false
+  enabled: true
+  replicas: 1
+  defaultDashboardsEnabled: false
+  persistence:
+    enabled: false
+  initChownData:
+    enabled: false
+  nodeSelector: &id001
+    aegis.lab/role: support
+  resources:
+    requests:
+      cpu: 75m
+      memory: 256Mi
+      ephemeral-storage: 64Mi
+    limits:
+      cpu: 150m
+      memory: 512Mi
+      ephemeral-storage: 128Mi
+  sidecar:
+    dashboards:
+      enabled: false
+    datasources:
+      enabled: false
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: http://step08-monitoring-prometheus:9090
+        isDefault: true
+  service:
+    type: ClusterIP
+  grafana.ini:
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+kube-state-metrics:
+  nodeSelector: *id001
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+      ephemeral-storage: 64Mi
+    limits:
+      cpu: 75m
+      memory: 128Mi
+      ephemeral-storage: 128Mi
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+      ephemeral-storage: 64Mi
+    limits:
+      cpu: 50m
+      memory: 128Mi
+      ephemeral-storage: 128Mi
+  hostNetwork: false
+  hostPID: false
+prometheusOperator:
+  nodeSelector: *id001
+  resources:
+    requests:
+      cpu: 25m
+      memory: 128Mi
+      ephemeral-storage: 64Mi
+    limits:
+      cpu: 75m
+      memory: 256Mi
+      ephemeral-storage: 128Mi
+  admissionWebhooks:
+    patch:
+      nodeSelector: *id001
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+          ephemeral-storage: 64Mi
+        limits:
+          cpu: 75m
+          memory: 128Mi
+          ephemeral-storage: 128Mi
+  prometheusConfigReloader:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+        ephemeral-storage: 64Mi
+      limits:
+        cpu: 50m
+        memory: 64Mi
+        ephemeral-storage: 128Mi
+prometheus:
+  service:
+    type: ClusterIP
+  prometheusSpec:
+    replicas: 1
+    nodeSelector: *id001
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 2h
+    retentionSize: 1GB
+    storageSpec:
+      emptyDir:
+        sizeLimit: 2Gi
+    resources:
+      requests:
+        cpu: 140m
+        memory: 608Mi
+        ephemeral-storage: 256Mi
+      limits:
+        cpu: 300m
+        memory: 1216Mi
+        ephemeral-storage: 3Gi
+    serviceMonitorSelector:
+      matchLabels:
+        release: step08
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector:
+      matchLabels:
+        release: step08
+    podMonitorSelectorNilUsesHelmValues: false
