@@ -3,12 +3,23 @@
 ## 실험을 진행한 이유
 
 Pod에 CPU·메모리 제한을 걸었을 때 요청 처리와 종료 상태가 어떻게 달라지는지 확인했다.
-같은 작업량에서 CPU Limit만 바꾸고, HPA를 켜고 끄고, 독립 Job의 메모리 Limit을 바꿔 실제 지표와 종료 상태를 비교했다.
+CPU Limit 비교, HPA OFF/ON 비교, 독립 Job의 메모리 Limit 비교를 각각 진행했다.
+각 비교 안에서는 요청률과 작업량 등 나머지 조건을 맞추고, 바꾼 조건에 따른 지표와 종료 상태를 비교했다.
 예상과 다른 지연, 중단한 실행, 수집하지 못한 값도 결과와 함께 남겼다.
 
 CPU 비교 6회, HPA OFF/ON 각 3회, 독립 Job OOM 비교 각 1회를 완료했다.
 HPA의 확장·축소와 CPU 분산은 확인했지만 응답 지연이나 처리량 개선은 입증하지 못했다.
-관측기에도 CFS 제한이 있었으므로, 실험 환경의 품질 기준을 모두 통과했다고 표현하지 않는다.
+관측기인 node-exporter에도 CFS 제한이 발생했다. 원래 중단 기준을 모두 충족하지 못한 점을 남기고, 미세한 지연 차이는 제한적으로 해석했다.
+
+## 핵심 결과
+
+| 실험 | 관측한 결과 | 해석의 범위 |
+| --- | --- | --- |
+| CPU | 측정 16,204건 모두 HTTP 200. 1000m의 세 실행에서 내부 표본의 API CFS counter 증가는 0 | 지연 차이는 쌍별로 달랐고 처리량 개선은 입증하지 못함 |
+| HPA | 측정 43,203건 모두 HTTP 200. 세 번 모두 1→2→1, 확장 후 Pod당 CPU 약 211~224m | 1개 Pod도 30 RPS를 처리함. 지연·처리량 개선 미입증, 관측 환경 한계를 명시한 조건부 PASS |
+| OOM | 128Mi Job은 OOMKilled/exit 137, 256Mi는 Completed/exit 0. API 관찰 362건 모두 HTTP 200 | 독립 Job의 종료 결과를 비교함. 정확한 메모리 peak와 API 자체의 OOM 복구는 미검증 |
+
+성공 건수는 정해진 관찰 구간의 결과다. 모든 부하에서의 무중단이나 복구 시간을 보장하는 수치로 사용하지 않았다.
 
 ## AWS EKS 환경과 비교 조건
 
@@ -34,16 +45,6 @@ API memory request/limit은 모든 비교에서 128/256Mi로 유지했다.
 HPA는 min 1/max 2, CPU 목표 70%(request 500m의 350m), 축소 안정화 300초였다.
 API 부하 비교는 HTTP/1.0 연결 종료와 k6 연결 재사용 금지를 같은 조건으로 적용했다.
 구체적인 구간·표본·변경 변수는 각 결과 문서에 기록했다.
-
-## 핵심 결과
-
-| 실험 | 관측한 결과 | 해석의 범위 |
-| --- | --- | --- |
-| CPU | 측정 16,204건 모두 HTTP 200. 1000m의 세 실행에서 내부 표본의 API CFS counter 증가는 0 | 지연 차이는 쌍별로 달랐고 처리량 개선은 입증하지 못함 |
-| HPA | 측정 43,203건 모두 HTTP 200. 세 번 모두 1→2→1, 확장 후 Pod당 CPU 약 211~224m | 1개 Pod도 30 RPS를 처리함. 지연·처리량 개선 미입증, 관측 환경 한계를 명시한 조건부 PASS |
-| OOM | 128Mi Job은 OOMKilled/exit 137, 256Mi는 Completed/exit 0. API 관찰 362건 모두 HTTP 200 | 독립 Job의 종료 결과를 비교함. 정확한 메모리 peak와 API 자체의 OOM 복구는 미검증 |
-
-성공 건수는 정해진 관찰 구간의 결과다. 모든 부하에서의 무중단이나 복구 시간을 보장하는 수치로 사용하지 않았다.
 
 ## 예상과 달랐던 현상과 판단
 
@@ -109,7 +110,7 @@ bash scripts/local-check.sh --docker
 소스 Manifest의 image는 의도적으로 실행할 수 없는 placeholder다.
 실제 실험에는 새 STEP08 ECR digest와 W/RPS/run-id를 [render.py](scripts/render.py)에 명시해 private 경로에 렌더했다.
 계정·kubeconfig/context·노드 역할·Metrics API·Prometheus를 확인한 뒤 수동으로 배포와 부하 순서를 진행했다.
-[preflight.py](scripts/preflight.py)의 자동 검사 통과가 전체 실험 GO를 뜻하지는 않는다.
+[preflight.py](scripts/preflight.py)의 사전 검사를 통과해도 실제 부하 중 입력률·배치·지표와 실험 진행 조건은 별도로 확인해야 한다.
 HPA OFF 전환에는 기존 HPA 제거와 replica 1 Ready 확인이 별도로 필요하며, OOM은 관찰 부하를 먼저 시작해 전·후 60초를 확보했다.
 [collect.py](scripts/collect.py)는 k6 종료 후 300초의 원본 수집 대기 구간 안에 raw/summary를 먼저 내보낸다.
 
@@ -125,13 +126,13 @@ STEP 06·07의 EKS/API 패턴을 참고하되 STEP08 관측을 위한 별도 코
 STEP07 Workflow가 STEP08을 자동 빌드·배포한 구조는 아니며, STEP08 이미지는 별도로 게시해 digest로 고정했다.
 
 실험 종료 후 마지막 k6 Job까지 자연 완료됐고 API 1개 Ready, HPA OFF, Worker 2개 Ready, Prometheus 11/11 Up을 확인했다.
-AWS 리소스는 보존 중이며 예산 변수는 자동 과금 차단이나 삭제 타이머가 아니다.
+실험 종료 당시 AWS 리소스는 보존했다. 예산 변수는 자동 과금 차단이나 삭제 타이머가 아니다.
 구축 시의 [IAM 검토 기록](terraform/IAM-REVIEW.md)과 아래 부록은 현재 실험 결과와 구분해 읽는다.
 
 <details>
 <summary>부록 — 기존 비교 기준과 구축·IAM·노드 검토 기록</summary>
 
-아래는 실험 전에 작성한 비교 프로토콜과 구축 과정의 기록이다.
+아래는 실험 전에 작성한 비교 프로토콜과 구축 과정의 기록이다. 절 번호는 당시 문서의 번호 체계를 유지했다.
 후보 부하·반복 횟수·과거 미완료 상태·당시 가격과 예산은 작성 시점의 판단이며, 현재 실험 결과나 실제 청구액이 아니다.
 OOM 반복 후보는 실행 전 검토로 각 조건 1회로 확정했다.
 원래 관측기 중단 기준은 그대로 보존하며, 실제 적용의 미흡함과 측정 한계는 본문에서 설명했다.
@@ -187,7 +188,7 @@ VPC-CNI/CoreDNS/kube-proxy는1.36 호환 목록에서 조회한 managed Add-on �
 8-A-4·5 당시 기존 정책10개로는 새 역할 관리와 EC2/EBS/ASG/LT 조회가 거부됐다.
 8-A-6에서 보완안을 검토하고 승인 후 `AegisStep08Supplement` 하나를 `terraform-lab`에
 연결했다. 기존 정책10개와 Boundary 미설정 상태를 유지했고, 누락됐던 조회 API는 실제로
-성공했다. 대표 Simulator 평가도 통과했지만 실제 생성·삭제 성공을 검증한 것은 아니다.
+성공했다. 대표 Simulator 평가도 통과했지만, 이 권한 검토 시점에 실제 생성·삭제 성공까지 검증한 것은 아니다.
 콘솔 요약에는 일부 작업·리소스·조건이 권한을 제공하지 않는다는 안내가 남아 있다.
 정책 원문은 검증본과 일치하며, 이 안내를 없애려고 권한을 확대하지 않았다.
 검토 이력과 한계는 [IAM-REVIEW.md](terraform/IAM-REVIEW.md)에 정리했다. 정책 JSON과
@@ -211,23 +212,23 @@ LB/PVC 유무 확인→새08 root의 최신 삭제 plan 검토→승인된 삭�
 EKS/NodeGroup/ASG/EC2/EBS/NAT/EIP/ENI/SG/Subnet/RT/VPC/신규IAM까지 확인한다.
 NAT/EIP association이 오래된 값인지, 삭제 권한이 새 대상에도 적용되는지 확인한다.
 State가 비었다는 이유만으로 정리 완료라고 적지 않는다. 기존 ECR digest와 GitHub
-OIDC/Publisher Role 보존도 마지막에 확인한다. 이번 단계에서는 삭제 명령을 실행하지 않았다.
+OIDC/Publisher Role 보존도 마지막에 확인한다. 이 구축 전 기록 단계에서는 삭제 명령을 실행하지 않았다.
 
 ## 8. 구축 전 검증 범위 (8-A-5 기록)
 
 로컬 앱·HTTP·amd64 이미지, 단위 테스트, Terraform fmt/validate, Helm template,
 YAML/JSON 및 Kubernetes OpenAPI/CRD 구조를 검증한다. 상세 로컬 결과는 이후 검증 보고에
-실제 통과/실패로 적는다. 현재 AWS 생성·삭제 권한 전체, 네트워크 연결, addon/runtime
+실제 통과/실패로 적는 계획이었다. 당시 AWS 생성·삭제 권한 전체, 네트워크 연결, addon/runtime
 호환성, 실제 allocatable, 메트릭 수집, pilot W/RPS, HPA 안정시간, OOMKilled, 비용 청구는
-미검증이다. 현재 권한이 부족하다는 사실과 아직 실행하지 않은 AWS 성공 여부를 구별한다.
+미검증이었다. 당시 권한이 부족했던 사실과 아직 실행하지 않은 AWS 성공 여부를 구별했다.
 기존 STEP07 workflow는 경로 필터가07 전용이므로08 CI가 이미 동작한다고
-설명하지 않는다. Commit/Push 및 실제 배포는 하지 않았다.
+설명하지 않는다. 이 구축 전 검토 단계에서는 Commit/Push 및 실제 배포를 하지 않았다.
 
 ## 9. 노드 라벨 절차와 자동/수동 gate (구축 전 초안 기록)
 
 `scripts/node_labels.py`의 기본 모드는 읽기 전용 inventory다. kubeconfig·context·
 예상 AWS 계정을 명시해야 하며 kubeconfig는600 권한으로 비공개 경로에 보관한다.
-현재 STEP08 클러스터는 없으므로 아래 절차는 실행하지 않았다.
+이 초안을 작성한 구축 전 시점에는 STEP08 클러스터가 없어 아래 절차를 실행하지 않았다.
 
 별도 구축·검토 후 기본 inventory는 다음과 같이 수집한다. 노드 이름은 실제 조회 후
 서로 다른 두 이름을 선택해야 하며 임의로 만들어 넣지 않는다.
@@ -243,11 +244,11 @@ python3 -B scripts/node_labels.py \
 스크립트는 AWS 계정·실제 EKS ARN/endpoint와 kubeconfig의 endpoint/TLS를 대조한다.
 NodeGroup ACTIVE·min/desired/max2, ASG의 Healthy/InService 인스턴스2개,
 Kubernetes 노드2개의 NodeGroup 라벨·UID/providerID·Ready·pressure·cordon 여부를 확인한다.
-두 Node가 ASG의 실제 인스턴스와 일치하지 않으면 중단한다. 현재 ASG 조회 권한이
-거부되므로 권한 보완 전에는 이 inventory도 실제 환경에서 통과할 수 없다.
+두 Node가 ASG의 실제 인스턴스와 일치하지 않으면 중단한다. 초안 작성 당시에는 ASG 조회 권한이
+거부돼 권한 보완 전까지 이 inventory도 실제 환경에서 통과할 수 없는 상태였다.
 
 검토된 inventory에만 `--review`와 명시적인 `--write-labels`를 함께 사용하도록 구현했다.
-이 모드는 두 노드를 변경하므로 별도 승인된 실행 범위에서만 사용한다. 이번에는 모의
+이 모드는 두 노드를 변경하므로 별도 승인된 실행 범위에서만 사용한다. 초안 작성 당시에는 모의
 Client 테스트만 했고 실제 label/patch 명령은 실행하지 않았다. 쓰기 직전에 각 Node를
 다시 읽고 UID/providerID·기존 라벨을 대조한 뒤 JSON Patch의 UID/resourceVersion/
 providerID/기존 labels test로 경쟁 변경을 거부한다. 두 Node 전체가 하나의 트랜잭션은 아니다.
@@ -267,7 +268,7 @@ ScalingLimited는 저부하에서 min1 때문에 True일 수 있어 이유를 �
 두 API 동시 Ready, 알려진 CPU 작업의 counter 증가, 생성기 headroom·실제 입력률 달성,
 HPA 정상상태와120초 유지 판정은 별도 실험 gate다. 자동 출력은 이들을 통과시키지 않으며
 `experiment_go: false`를 유지한다. 배치 검사는 실제 k6/API가 실행 중일 때만 VERIFIED다.
-정상상태 성능·HPA·OOM 검증은 그대로 미완료다.
+이 구축 전 초안 시점에는 정상상태 성능·HPA·OOM 검증이 미완료였다.
 
 수집기는 종료 후300초 안에 읽어야 하는 k6 raw/summary를 먼저 저장한 뒤 Pod/Event/log와
 Prometheus 범위 쿼리를 처리한다. 수집이 실패하면 기존 파일을 지우지 않고 새 attempt로 보존한다.

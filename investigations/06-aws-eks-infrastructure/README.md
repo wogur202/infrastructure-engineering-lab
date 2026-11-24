@@ -1,10 +1,14 @@
-# STEP 06. AWS EKS 기반 API 배포와 장애 복구 검증
+# AWS EKS 구축과 Pod 삭제 중 외부 응답 관측
 
-Terraform으로 AWS 서울 리전에 네트워크와 EKS를 구축하고, Private Subnet의 Python API를 ALB에 연결했다. 이후 실제 Pod를 삭제하면서 외부 HTTP 응답과 자동 복구 과정을 관측했다.
+Project Aegis의 기반 환경으로 Terraform을 사용해 AWS 서울 리전에 네트워크와 EKS를 구축하고, Private Subnet의 Python API를 ALB에 연결했다. 이후 실제 Pod를 삭제하면서 외부 HTTP 응답과 자동 복구 과정을 관측했다.
 
 이번 실험에서는 **Terraform State, AWS 리소스 상태, Kubernetes 상태, 외부 HTTP 응답**을 각각 확인했다. 도구 하나에서 정상이라고 표시되는 것만으로 서비스 전체가 정상이라고 판단하지 않았다.
 
-## 1. 최종 구축 상태
+Pod 한 개를 삭제한 관측 구간에서 외부 순차 요청 **90건 모두 HTTP 200**을 반환했다. 삭제 요청 기록에서 새 Pod의 첫 외부 응답까지는 **약 7초**였다. 이는 정확한 Pod Ready 시간이나 노드 복구시간이 아니며, RTO나 무중단 보장을 검증한 결과도 아니다.
+
+[아키텍처](#아키텍처) · [Pod 삭제 관측](#9-pod-장애-주입과-실제-응답) · [구축 중 EIP 복구 과정](#4-eip-조회-권한-오류와-부분-배포-복구)
+
+## 1. 실험 당시 구축 상태
 
 | 구성 | 실제 결과 |
 | --- | --- |
@@ -114,7 +118,7 @@ IAM 역할은 다음과 같이 구성하고 실제 연결 상태까지 조회했
 | `aegis-eks-cluster-role` | `eks.amazonaws.com` | `AmazonEKSClusterPolicy` |
 | `aegis-eks-node-role` | `ec2.amazonaws.com` | `AmazonEKSWorkerNodePolicy`, `AmazonEC2ContainerRegistryPullOnly`, `AmazonEKS_CNI_Policy` |
 
-CNI 정책은 초기 실습 구성을 단순하게 유지하려고 Node Role에 연결했다. 워크로드별 최소 권한을 분리하는 구성은 아직 적용하지 않았다.
+CNI 정책은 초기 실습 구성을 단순하게 유지하려고 Node Role에 연결했다. 당시에는 워크로드별 최소 권한을 분리하는 구성을 적용하지 않았다.
 
 ## 4. EIP 조회 권한 오류와 부분 배포 복구
 
@@ -129,7 +133,7 @@ CNI 정책은 초기 실습 구성을 단순하게 유지하려고 Node Role에 
 5. 새 복구 Plan에서 NAT Gateway와 Private 경로만 생성하는 `2 to add, 0 to change, 0 to destroy`를 확인했다.
 6. 복구 계획을 적용해 `2 added, 0 changed, 0 destroyed`를 확인했다. 이후 NAT `available`, EIP 연결 및 `No changes`를 검증했다.
 
-위 내용은 이번 작업 세션의 실행 결과를 정리한 것이다. 실패 당시 전체 터미널 로그를 별도의 원본 파일로 보관한 것은 아니므로, 재구성한 로그를 원본 증빙처럼 만들지는 않았다. State 백업과 이전 계획 파일은 로컬에 보존하고 Git에서 제외했다.
+위 내용은 당시 구축 과정의 실행 결과를 정리한 것이다. 실패 당시 전체 터미널 로그를 별도의 원본 파일로 보관한 것은 아니므로, 재구성한 로그를 원본 증빙처럼 만들지는 않았다. State 백업과 이전 계획 파일은 로컬에 보존하고 Git에서 제외했다.
 
 이번 실습에서 배운 점은 생성 실패 후에는 **오류 메시지, 실제 AWS 리소스, Terraform State와 새 Plan을 함께 확인해야 한다**는 것이다. `untaint`는 실패 이력만 보고 항상 적용하는 해결책이 아니다. 이번에는 실제 EIP 존재와 조회 권한 복구를 먼저 확인한 뒤 사용했다.
 
@@ -184,7 +188,7 @@ ALB 경유 20회 요청에서 두 Pod가 각각 10회 응답했고, AWS Target G
 
 ## 9. Pod 장애 주입과 실제 응답
 
-정상 상태에서 외부 요청 기록을 시작하고 Pod `h5h86`을 삭제했다. Deployment는 새 Pod `tnz25`를 생성했다.
+정상 상태에서 외부 요청 기록을 시작하고 Pod `h5h86`을 삭제했다. Deployment는 새 Pod `tnz25`를 생성했다. 새 Pod는 삭제된 Pod와 같은 Worker에서 실행됐다.
 
 | 시각 (KST) | 관측 결과 |
 | --- | --- |
@@ -220,6 +224,8 @@ ALB 경유 20회 요청에서 두 Pod가 각각 10회 응답했고, AWS Target G
 
 Terraform은 VPC·EKS·IAM·ECR 등을 관리하고, ALB와 Target Group은 Kubernetes Controller가 관리한다. 따라서 Terraform `No changes`는 Controller 관리 리소스의 정상 상태까지 보장하지 않는다.
 
+후속 [STEP 07](../07-safe-deployment/README.md)은 이 인프라 코드를 재사용해 환경을 재구축했고, 새 ALB에서 Blue/Green 슬롯 전환을 관측했다. [STEP 08](../08-observability-scaling/README.md)은 기존 ECR을 참조하는 별도 EKS·Terraform State 환경에서 자원과 확장 동작을 비교했다.
+
 ## 11. 코드 및 증빙
 
 - `terraform/`: VPC, 네트워크, EKS, ECR, OIDC, IAM
@@ -239,6 +245,8 @@ Terraform은 VPC·EKS·IAM·ECR 등을 관리하고, ALB와 Target Group은 Kube
 
 따라서 이 파일들은 환경변수를 치환하지 않은 상태로
 `kubectl apply -f`를 실행하는 배포용 완성 파일이 아니다.
+
+아래 예시는 AWS 계정 ID와 접속 CIDR만 치환한다. 재구축할 때는 Ingress에 고정된 당시 Subnet ID와 API 이미지 Digest를 환경에 맞게 확인하고, 해당 이미지가 실제 ECR에 존재하는지도 확인해야 한다. Controller의 Helm 설치와 환경별 Values 준비도 별도 수동 절차이므로, 이 예시만으로 전체 환경을 재구축할 수는 없다.
 
 다음은 별도 패키지 설치 없이 로컬에서 렌더링하는 예시다.
 

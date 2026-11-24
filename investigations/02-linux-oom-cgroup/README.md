@@ -36,7 +36,7 @@ oom-kill:constraint=CONSTRAINT_MEMCG,...,oom_memcg=/system.slice/oom-lab.service
 Memory cgroup out of memory: Killed process 27212 (python3)
 ```
 
-`CONSTRAINT_MEMCG`는 시스템 전체 메모리 고갈이 아니라 **메모리 cgroup 제약에서 발생한 OOM**임을 가리킨다. 같은 시점의 `/proc/vmstat`에서 `oom_kill` 카운터도 **0 → 1**로 변했다.
+`CONSTRAINT_MEMCG`는 시스템 전체 메모리 고갈이 아니라 **메모리 cgroup 제약에서 발생한 OOM**임을 가리킨다. 실험 전후의 `/proc/vmstat`에서 `oom_kill` 카운터도 **0 → 1**로 변했다.
 
 숫자 하나만으로 결론을 내리기보다는, 종료 기록·커널의 제약 정보·VM 상태를 함께 확인했다.
 
@@ -86,16 +86,20 @@ OOM을 마주쳤다면 우선 시스템 메모리 사용률뿐 아니라 **해�
 
 ### 재현 시 사용한 핵심 설정
 
+Ubuntu VM에서 `memory_hog.py`가 있는 디렉터리로 이동한 뒤, 스크립트의 절대 경로를 준비한다.
+
 ```bash
+OOM_SCRIPT_PATH="$(pwd)/memory_hog.py"
+
 # cgroup 한도 64MiB에서 OOM 재현
 sudo systemd-run --unit=oom-lab --collect --wait --pipe -p MemoryMax=64M \
-  /usr/bin/python3 -u memory_hog.py --mb 128 --step 16 --interval 0.2
+  /usr/bin/python3 -u "$OOM_SCRIPT_PATH" --mb 128 --step 16 --interval 0.2
 
 # 제한 256MiB로 변경 후 동일 할당 시도
 sudo systemd-run --unit=oom-lab-verify --collect -p MemoryMax=256M \
-  /usr/bin/python3 -u memory_hog.py --mb 128 --step 16 --interval 0.2
+  /usr/bin/python3 -u "$OOM_SCRIPT_PATH" --mb 128 --step 16 --interval 0.2
 ```
 
-> `oom-lab-verify`는 측정 후 `sudo systemctl stop oom-lab-verify.service`로 종료했다. 실행 경로는 프로젝트 파일이 있는 디렉터리 기준이며, 실제 실행에서는 스크립트의 절대 경로를 사용했다.
+> `oom-lab-verify`는 측정 후 `sudo systemctl stop oom-lab-verify.service`로 종료했다. `OOM_SCRIPT_PATH`는 VM 안의 경로이며, 실제 실험에서도 스크립트의 절대 경로를 사용했다.
 
-**범위와 한계:** 단일 할당 패턴에서 확인한 결과이며, 반복 측정이나 여러 프로세스의 간섭, 서비스 지연 영향은 평가하지 않았다. 실제 운영 시스템의 안전한 `MemoryMax`를 이 결과만으로 결정할 수는 없다.
+**범위와 한계:** 단일 할당 패턴에서 확인한 결과이며, 반복 측정이나 여러 프로세스의 간섭, 서비스 지연 영향은 평가하지 않았다. 실제 운영 시스템의 안전한 `MemoryMax`를 이 결과만으로 결정할 수는 없다. 48MiB·64.0M과 최초 실행의 `timeout`/`status=124`·2.9M은 당시 실험 기록이며, 해당 전체 터미널 출력은 현재 공개 증빙에 모두 보존돼 있지는 않다.
