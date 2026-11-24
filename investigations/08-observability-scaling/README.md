@@ -1,59 +1,140 @@
-# STEP 08 — CPU Throttling, HPA, OOM 관측
+# STEP 08 — CPU Limit, HPA, OOM 관측
 
-현재는 **8-B-1 구축 전 기준 버전 저장·Plan 검토 단계**다. EKS를 생성하거나 실제 부하 실험을 실행하지
-않았다. STEP 06·07의 EKS/API 패턴을 참고해 별도 코드를 작성했으며 기존 코드, State,
-ECR 이미지와 GitHub 배포용 IAM은 보존한다. 검증하지 않은 성능 개선 수치는 적지 않는다.
+## 실험을 진행한 이유
 
-## 1. 실험 환경
+Pod에 CPU·메모리 제한을 걸었을 때 요청 처리와 종료 상태가 어떻게 달라지는지 확인했다.
+같은 작업량에서 CPU Limit만 바꾸고, HPA를 켜고 끄고, 독립 Job의 메모리 Limit을 바꿔 실제 지표와 종료 상태를 비교했다.
+예상과 다른 지연, 중단한 실행, 수집하지 못한 값도 결과와 함께 남겼다.
 
-서울 EKS 1.36, m7i.large ON_DEMAND 2대, 각 암호화 gp3 root 20GiB를 후보로 사용한다.
-VPC는 public subnet 1개와 private subnet 2개(2a/2c), NAT 1개로 구성한다.
-노드는 public IP가 없고 EKS API의 외부 접근은 관리자의 IPv4 /32로 제한한다.
-ALB, Ingress, ALB Controller, Karpenter, PVC, 별도 EC2 부하 발생기는 만들지 않는다.
-단일 NAT는 AZ 장애에 취약하고 다른 AZ의 노드가 이용하면 추가 전송 비용이 생길 수 있다.
+CPU 비교 6회, HPA OFF/ON 각 3회, 독립 Job OOM 비교 각 1회를 완료했다.
+HPA의 확장·축소와 CPU 분산은 확인했지만 응답 지연이나 처리량 개선은 입증하지 못했다.
+관측기에도 CFS 제한이 있었으므로, 실험 환경의 품질 기준을 모두 통과했다고 표현하지 않는다.
 
-노드 하나는 `aegis.lab/role=support`로 관측 도구와 k6를, 다른 하나는
-`aegis.lab/role=api`로 API를 실행하는 설계다. 라벨은 실제 노드 확인 후 부여해야 한다.
-라벨이 없으면 Pod는 Pending이 된다. 노드 교체나 배치 변경이 있으면 비교를 중단한다.
-단일 NodeGroup의 labels 값은 두 노드에 동일하게 적용되므로 역할을 하나씩 나누는 데 쓰지 않는다.
-구축 후 별도로 검토한 수동 라벨 절차를 사용한다. 절차 초안은 아래 9절이며 아직 실행하지 않았다.
-API 두 Pod는 같은 노드에서 실행할 수 있다. 이 실험은 Pod 1→2 확장이지 노드 자동 확장,
-다중 노드 고가용성 또는 무중단 배포 검증이 아니다.
+## AWS EKS 환경과 비교 조건
 
-## 2. 파일 구성
+서울 리전의 EKS 1.36과 m7i.large ON_DEMAND Worker 2대를 사용했다.
+한 Worker에는 API를, 다른 Worker에는 k6와 Prometheus·Grafana·Metrics Server 등을 배치했다.
+HPA로 늘어난 API 두 Pod도 같은 API Worker에서 실행했다. 노드 자동 확장이나 다중 노드 고가용성을 검증한 구성은 아니다.
 
-| 경로 | 내용 |
+| 항목 | 실제 구성 |
 | --- | --- |
-| `app/` | 표준 라이브러리 HTTP 서버, 유한 메모리 Job, amd64 Docker 이미지 |
-| `terraform/` | 새 VPC/EKS/MNG/IAM, Add-on 버전 고정, 기존 ECR data 참조 |
-| `k8s/base/`, `k8s/overlays/` | 공통 API와 CPU Limit/HPA 비교 설정 |
-| `k8s/oom-*.yaml` | 128Mi/256Mi 격리 Job |
-| `monitoring/` | 고정 Helm Values, PromQL, 수동 import용 Grafana dashboard |
-| `load/` | 입력률을 고정하는 k6 스크립트와 Job |
-| `scripts/` | 로컬 검증, manifest 렌더, 읽기 전용 런타임 점검·증빙 수집 |
-| `tests/` | 앱 동작·입력 제한·자원 비교 조건 테스트 |
-| `evidence/` | 보관 기준. 실제 AWS 실험 증빙은 아직 없음 |
+| 네트워크 | VPC, public subnet 1개, private subnet 2개(2a/2c), NAT Gateway 1개 |
+| API | Python 3.12 표준 라이브러리 HTTP 서버, 고정 횟수 정수 연산 |
+| 관측 | kubelet cAdvisor의 CPU/CFS, Prometheus, kube-state-metrics, 별도 Metrics API |
+| 통제 | 같은 STEP08 이미지 digest, 같은 Node UID/providerID, API·발생기 역할별 배치 |
+| 제외한 구성 | ALB·Ingress·별도 EC2 발생기·PVC 없음 |
 
-## 3. 앱과 장애 재현 방식
+| 비교 | 변경 변수 | 고정한 조건 |
+| --- | --- | --- |
+| CPU | limit 250m / 1000m | request 250m, replica 1, HPA OFF, W=100000, 15 RPS |
+| HPA | OFF / ON | request=limit 500m, 시작 replica 1, W=100000, 30 RPS |
+| OOM Job | memory limit 128Mi / 256Mi | request 64Mi, CPU 50m/100m, 192Mi 할당·페이지 쓰기, API info 관찰 1 RPS |
 
-`/healthz`, `/readyz`, `/api/info`는 상태·버전·hostname을 제공한다.
-`/api/cpu-load?iterations=W`는 같은 W에 같은 checksum을 반환하는 순수 Python 정수
-연산을 수행한다. 1~2,000,000 범위만 허용하고, 작업 제한시간 기본 3초·최대 30초,
-동시 연결 처리 기본 16·최대 64개로 제한했다. 서버의 socket timeout은 5초다.
-대기열도 유한하며 포화 요청은 503, 잘못된 입력은 400을 반환한다.
-작업 deadline을 넘은 503은 완료한 요청으로 계산하지 않는다.
+API memory request/limit은 모든 비교에서 128/256Mi로 유지했다.
+HPA는 min 1/max 2, CPU 목표 70%(request 500m의 350m), 축소 안정화 300초였다.
+API 부하 비교는 HTTP/1.0 연결 종료와 k6 연결 재사용 금지를 같은 조건으로 적용했다.
+구체적인 구간·표본·변경 변수는 각 결과 문서에 기록했다.
 
-W 기본값 50,000은 로컬 동작 확인용이다. 본 실험의 W/RPS는 pilot 후 고정해야 한다.
-일정 시간 동안 돌리는 busy-loop 대신 고정 횟수를 사용해 CPU Limit에 따라 요청당
-작업량이 달라지는 문제를 줄인다. CPython 3.12의 GIL 때문에 한 프로세스의 순수 Python
-스레드는 여러 CPU 코어를 동시에 쓰지 못한다. Probe도 CPU 압박 영향을 받을 수 있다.
-서버는 HTTP/1.0으로 연결을 닫으며 k6도 모든 비교에서 연결 재사용을 끈다.
+## 핵심 결과
 
-OOM은 HTTP 경로 대신 별도 Job으로 실행한다. 후보는 192Mi를 16Mi씩 할당하고 각
-4KiB 페이지에 쓰기, 최대 hold 10초·실행 50초다. 전체 할당 상한은 256Mi다.
-Job은 activeDeadline 60초, Never, backoff0이며 자동 TTL을 두지 않는다.
-Python 런타임을 포함한 컨테이너 사용량은 할당량 192Mi와 다르다. 256Mi에서의 정상
-종료도 측정 전에는 확정할 수 없다. 로컬 테스트는 `--safe --mib 2 --step-mib 1`만 쓴다.
+| 실험 | 관측한 결과 | 해석의 범위 |
+| --- | --- | --- |
+| CPU | 측정 16,204건 모두 HTTP 200. 1000m의 세 실행에서 내부 표본의 API CFS counter 증가는 0 | 지연 차이는 쌍별로 달랐고 처리량 개선은 입증하지 못함 |
+| HPA | 측정 43,203건 모두 HTTP 200. 세 번 모두 1→2→1, 확장 후 Pod당 CPU 약 211~224m | 1개 Pod도 30 RPS를 처리함. 지연·처리량 개선 미입증, 관측 환경 한계를 명시한 조건부 PASS |
+| OOM | 128Mi Job은 OOMKilled/exit 137, 256Mi는 Completed/exit 0. API 관찰 362건 모두 HTTP 200 | 독립 Job의 종료 결과를 비교함. 정확한 메모리 peak와 API 자체의 OOM 복구는 미검증 |
+
+성공 건수는 정해진 관찰 구간의 결과다. 모든 부하에서의 무중단이나 복구 시간을 보장하는 수치로 사용하지 않았다.
+
+## 예상과 달랐던 현상과 판단
+
+**CPU Limit을 높였다고 지연 차이가 일정하지는 않았다.**
+세 쌍의 p95 차이는 약 21.644ms, 16.263ms, 0.045ms였다.
+250m에서 CFS 기간 비율이 비슷했던 두 실행도 p95가 달랐다.
+제한된 기간의 비율 하나로 지연을 설명하거나 일정한 성능 개선율을 만들지 않았다.
+20 RPS Pilot에서는 Probe 실패와 API 재시작도 발생해, 정상 비교 조건과 구분해 보존했다.
+
+**HPA가 동작한 것과 성능이 좋아진 것은 다른 결과였다.**
+CPU는 두 Pod로 분산됐지만 세 쌍의 ON p95는 OFF보다 약 0.439~1.632ms 높았다.
+확장 전환의 짧은 구간에는 일시적인 지연 증가도 있었다.
+새 Pod의 최초 Ready 이전 경고와 이미 서비스를 제공하던 Pod의 장애를 구분했다.
+초기 Pilot 중단, 최초 OFF의 k6 내부 진단 간섭과 대체 측정도 [HPA 결과](evidence/hpa-results-20261124.md)에 남겼다.
+
+**관측 환경에도 제한이 있었다.**
+후속 원본 재검토에서 CPU 6회 모두 node-exporter CFS가 확인됐다. 각 실행의 조회 표본 최대값은 약 37.50~46.67%였다.
+HPA와 OOM에서도 같은 관측기 제한을 기록했다. 이는 API 컨테이너의 CFS와 별개의 값이며, CPU 사용률이나 손실 CPU 시간의 비율도 아니다.
+API·k6 CPU 분석은 node-exporter가 아닌 kubelet cAdvisor counter를 사용했고, Prometheus target은 수집 구간에서 Up이었다.
+다만 Up은 수집 연결이 유지됐다는 뜻이며 관측 정확도를 완전히 보장하지 않는다.
+관측기 CFS를 실행 중 즉시 판정하지 못했으므로, 부록의 원래 중단 기준을 모두 충족했다고 할 수 없다.
+기존 측정값은 보존하되 CPU·HPA·OOM에 공통으로 적용되는 환경 한계로 설명하고 미세한 지연 차이는 제한적으로 해석한다.
+
+**짧게 실행된 Job의 메모리 최고값은 잡지 못했다.**
+128Mi의 마지막 할당 로그 112Mi는 실제 컨테이너 peak가 아니다.
+128Mi에서는 기동 초기 working_set 표본 1개만 있었고, 256Mi는 해당 Job의 시계열이 수집되지 않았다.
+15초 scrape와 cAdvisor 갱신 간격의 영향을 고려해 정확한 peak는 미확인으로 남겼다.
+종료 판정은 Kubernetes terminated reason과 작업 완료 로그를 함께 확인했다.
+
+## 실제 결과와 증빙
+
+- [CPU Limit 비교 — 6회 결과와 세션 분리·변동](evidence/cpu-limit-results-20261124.md)
+- [HPA OFF/ON — 3쌍 결과, 전환 지연, 관측 품질과 제외 실행](evidence/hpa-results-20261124.md)
+- [독립 Job OOM — 두 종료 결과와 메모리 관측 한계](evidence/oom-results-20261124.md)
+- [HPA Pilot — 최초 중단과 1→2→1 확인 기록](evidence/hpa-pilot-results-20261124.md)
+- [배포 검증 — 이미지·Pod·메트릭 연결 확인](evidence/deployment-verification-20261123.md)
+
+원본 k6 raw/summary, Kubernetes 상태·Events·로그, Prometheus 쿼리와 SHA256 목록은 Git 제외 경로에 보존했다.
+계정·네트워크·노드 식별자가 포함될 수 있어 공개 요약과 분리했다.
+[증빙 보관 기준](evidence/README.md)에 원본 범위와 공개 시 주의점을 정리했다.
+
+## 코드 구조와 재현 범위
+
+| 경로 | 역할 |
+| --- | --- |
+| [app/](app/) | HTTP API, 유한 메모리 Job, Dockerfile |
+| [k8s/](k8s/) | 공통 Deployment, CPU/HPA overlay, 독립 OOM Job |
+| [load/](load/) | 고정 입력률 k6 시나리오, 원본·summary 출력 |
+| [monitoring/](monitoring/) | 고정 Helm Values와 수집 쿼리. dashboard는 수동 import용 선택 자료 |
+| [terraform/](terraform/) | 별도 EKS 실험 환경과 기존 ECR data 참조 |
+| [scripts/](scripts/), [tests/](tests/) | 렌더·계정/노드 확인·사전 점검·수집·로컬 검증 |
+
+Python3, Docker, Terraform 1.17+, Helm4, kubectl을 준비한 뒤 로컬 검증은 다음 진입점으로 실행할 수 있다.
+
+```bash
+cd "$(git rev-parse --show-toplevel)/investigations/08-observability-scaling"
+bash scripts/local-check.sh --docker
+```
+
+이 검사는 앱·이미지·설정·스키마를 확인한다. backend 없는 Terraform init/validate도 포함하지만 AWS apply나 실험 부하는 실행하지 않는다.
+실제 AWS 측정의 성공 여부는 위 결과 문서와 구분해야 한다. 당시 범위는 [로컬 검증 기록](LOCAL-VALIDATION.md)에 남겼다.
+
+소스 Manifest의 image는 의도적으로 실행할 수 없는 placeholder다.
+실제 실험에는 새 STEP08 ECR digest와 W/RPS/run-id를 [render.py](scripts/render.py)에 명시해 private 경로에 렌더했다.
+계정·kubeconfig/context·노드 역할·Metrics API·Prometheus를 확인한 뒤 수동으로 배포와 부하 순서를 진행했다.
+[preflight.py](scripts/preflight.py)의 자동 검사 통과가 전체 실험 GO를 뜻하지는 않는다.
+HPA OFF 전환에는 기존 HPA 제거와 replica 1 Ready 확인이 별도로 필요하며, OOM은 관찰 부하를 먼저 시작해 전·후 60초를 확보했다.
+[collect.py](scripts/collect.py)는 k6 종료 후 300초의 원본 수집 대기 구간 안에 raw/summary를 먼저 내보낸다.
+
+현재 공개 절차는 로컬 검증과 실험 구성·수집 방법을 제공한다.
+이미지 게시, 환경별 입력, 각 Trial의 시작·회복·수집 순서를 모두 자동화한 원클릭 재현을 제공하는 것은 아니다.
+스키마 검증도 실제 admission·IAM 권한·런타임 성능 검증을 대신하지 않는다.
+
+## STEP 06·07과의 관계
+
+STEP 06·07의 EKS/API 패턴을 참고하되 STEP08 관측을 위한 별도 코드를 작성했다.
+기존 `aegis-api` ECR은 Terraform data로 참조하고, 새 환경의 State는 `terraform/.state/terraform.tfstate`로 분리했다.
+기존 State·ECR 이미지·GitHub OIDC/Publisher Role은 보존했다.
+STEP07 Workflow가 STEP08을 자동 빌드·배포한 구조는 아니며, STEP08 이미지는 별도로 게시해 digest로 고정했다.
+
+실험 종료 후 마지막 k6 Job까지 자연 완료됐고 API 1개 Ready, HPA OFF, Worker 2개 Ready, Prometheus 11/11 Up을 확인했다.
+AWS 리소스는 보존 중이며 예산 변수는 자동 과금 차단이나 삭제 타이머가 아니다.
+구축 시의 [IAM 검토 기록](terraform/IAM-REVIEW.md)과 아래 부록은 현재 실험 결과와 구분해 읽는다.
+
+<details>
+<summary>부록 — 기존 비교 기준과 구축·IAM·노드 검토 기록</summary>
+
+아래는 실험 전에 작성한 비교 프로토콜과 구축 과정의 기록이다.
+후보 부하·반복 횟수·과거 미완료 상태·당시 가격과 예산은 작성 시점의 판단이며, 현재 실험 결과나 실제 청구액이 아니다.
+OOM 반복 후보는 실행 전 검토로 각 조건 1회로 확정했다.
+원래 관측기 중단 기준은 그대로 보존하며, 실제 적용의 미흡함과 측정 한계는 본문에서 설명했다.
 
 ## 4. 비교 조건
 
@@ -96,65 +177,6 @@ k6 Job은 warm-up60초+측정240초를 기본 후보로 두고 phase 태그를 �
 VU 소진을 구별한다. 생성기/관측기 지속 CFS, scrape 누락, node pressure, Pending,
 예상 밖 restart, 비용·시간 초과가 있으면 중단·무효 사유를 기록한다.
 
-## 5. 노드 예산과 수집 gate
-
-아직 실제 Node Allocatable은 없다. 노드당 1800m/6144Mi를 보수적인 계산 후보로 사용했다.
-support 노드의 requests는 시스템 예산 포함1000m/2376Mi, limits+시스템 예산은
-1650m/3984Mi다. 여기에는 k6, Prometheus+reloader, Grafana, Operator, KSM,
-Metrics Server, node-exporter와 시스템 변동 예산350m/768Mi가 들어 있다.
-Grafana sidecar는 비활성화했다. API 노드의 최대2Pod는 같은 방식으로 requests
-1375m/1088Mi, limits+시스템 예산1400m/1408Mi다. 시스템 예산은 실제 설정 limit가 아니다.
-
-구축 후 실제 DaemonSet/CoreDNS/init/sidecar/Pod overhead, Pod 수, ephemeral storage를
-합산해야 한다. `scripts/preflight.py`는 실제 allocatable과 Pod requests로 최대2API/k6를
-다시 투영하며 여유 CPU200m/메모리512Mi와 라벨·상태·필수 지표를 확인한다. 이 스크립트도
-아직 실제 클러스터에서 실행하지 않았다. 두 API 동시 Ready와 생성기/관측기 headroom을
-확인하기 전에는 실험 GO를 내리지 않는다. k6를 별도 EC2로 옮겨야 하면 별도 설계 검토를 한다.
-
-Metrics Server Helm3.14.0/app0.9.0을 한 가지 설치 경로로 선택했다. EKS managed
-metrics-server를 중복 설치하지 않는다. aggregator TLS는 Helm 생성 인증서의 CA bundle을
-사용하고 kubelet CA 검증도 켠다. EKS 실제 인증서/SAN·연결 호환성은 구축 후 gate다.
-TLS 오류를 이유로 자동으로 검증 우회 설정을 넣지 않는다.
-
-kube-prometheus-stack93.8.0은 Prometheus1/Grafana1/KSM/node-exporter/kubelet을 남기고
-Alertmanager·불필요한 control-plane scrape/default rules를 끈다. cAdvisor 기본 DROP 대신
-필요 지표 allowlist를 써 usage, CFS periods/throttled periods/throttled seconds를 보존한다.
-periods 비율은 CPU사용률이 아니고 throttled seconds도 응답시간과 같은 지표가 아니다.
-HPA/requests/limits/배치/OOM/Events는 별도로 함께 수집한다. 앱 `/metrics`는 구현하지 않았다.
-
-Prometheus는 disk emptyDir2Gi, retention2h/size1GB, Grafana는 비영속이다. PVC는 없다.
-Pod 재생성 시 데이터가 사라질 수 있고 node root EBS·이미지·로그는 별도 공간을 쓴다.
-API뿐 아니라 k6·관측기 CPU/CFS, Node 메모리 available/total·allocatable, 전체 Pod requests와
-배치, target up/freshness도 내보내도록 쿼리를 보강했다. 실제 수집 성공은 아직 미검증이다.
-실제 표적 시계열·freshness·up·Metrics API를 조회하고 작은 알려진 부하에서 usage 증가를
-확인하지 못하면 실험하지 않는다. `dashboard.json`은 수동 import용이며 설치 성공 증빙이 아니다.
-
-## 6. 로컬 검증 재현
-
-필요 도구는 Python3, Docker, Terraform1.17+, Helm4, kubectl이다. 아래 스크립트는
-STEP08 안에만 캐시·가상환경·렌더 결과를 만들고 새 root에서 backend 없는 init/validate를
-실행한다. AWS plan/apply나 Kubernetes API 호출은 하지 않는다.
-
-```bash
-cd "$(git rev-parse --show-toplevel)/investigations/08-observability-scaling"
-bash scripts/local-check.sh --docker
-```
-
-Helm CRD의 `=` enum, OpenAPI v2의 optional null/IntOrString을 처리해 오프라인 검증한다.
-CEL, admission, IAM, 실제 API server 동작과 Operator의 Pod 생성을 검증하는 것은 아니다.
-Prometheus StatefulSet/Pod는 Helm 렌더에 없고 Operator가 나중에 생성한다.
-렌더에 포함된 Secret·인증서는 `.local/`에만 남기고 공개하지 않는다.
-
-소스 manifest의 image는 고의로 실행 불가능한 placeholder다. 실제 승인·이미지 게시 후에만
-새 ECR digest를 `scripts/render.py`에 넘겨 private 경로에 렌더한다. 기존07 digest는 거부한다.
-renderer는 apply를 실행하지 않는다. W/RPS는 필수 입력이며 pilot 값인지 별도로 검토해야 한다.
-OOM 렌더는 app Job과 info 1RPS load Job을 만들며 API Deployment를 새로 만들지는 않는다.
-먼저 HPA가 없는 기존 STEP08 API1개가 정상 상태여야 한다.
-
-중요: HPA 없는 overlay를 apply하는 것만으로 이전 HPA가 삭제되지는 않는다. 실제 비교 전에
-기존 HPA 제거와 replica1 Ready를 명시적으로 확인해야 한다. 배포 helper가 이를 자동 실행하지 않는다.
-Deployment의 Recreate 전환 구간은 정상상태 측정에서 제외하고 시각을 남긴다.
-
 ## 7. Terraform 소유권·비용·삭제
 
 새 root의 backend 경로는 `terraform/.state/terraform.tfstate`다. 기존06 State를 복사하거나
@@ -191,7 +213,7 @@ NAT/EIP association이 오래된 값인지, 삭제 권한이 새 대상에도 �
 State가 비었다는 이유만으로 정리 완료라고 적지 않는다. 기존 ECR digest와 GitHub
 OIDC/Publisher Role 보존도 마지막에 확인한다. 이번 단계에서는 삭제 명령을 실행하지 않았다.
 
-## 8. 현재 검증 범위
+## 8. 구축 전 검증 범위 (8-A-5 기록)
 
 로컬 앱·HTTP·amd64 이미지, 단위 테스트, Terraform fmt/validate, Helm template,
 YAML/JSON 및 Kubernetes OpenAPI/CRD 구조를 검증한다. 상세 로컬 결과는 이후 검증 보고에
@@ -201,7 +223,7 @@ YAML/JSON 및 Kubernetes OpenAPI/CRD 구조를 검증한다. 상세 로컬 결�
 기존 STEP07 workflow는 경로 필터가07 전용이므로08 CI가 이미 동작한다고
 설명하지 않는다. Commit/Push 및 실제 배포는 하지 않았다.
 
-## 9. 노드 라벨 절차 초안과 자동/수동 gate
+## 9. 노드 라벨 절차와 자동/수동 gate (구축 전 초안 기록)
 
 `scripts/node_labels.py`의 기본 모드는 읽기 전용 inventory다. kubeconfig·context·
 예상 AWS 계정을 명시해야 하며 kubeconfig는600 권한으로 비공개 경로에 보관한다.
@@ -257,3 +279,5 @@ Git ignore 패턴은 kubeconfig/state/plan/Secret 이름/token과 private 디렉
 [Metrics Server](https://github.com/kubernetes-sigs/metrics-server),
 [k6 constant arrival rate](https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/constant-arrival-rate/),
 [관측 차트 고정 Values](https://github.com/prometheus-community/helm-charts/blob/4db9f9b11ed00838051066cff4e06c3c500e1560/charts/kube-prometheus-stack/values.yaml).
+
+</details>

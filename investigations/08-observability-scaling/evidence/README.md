@@ -1,7 +1,9 @@
 # 증빙 상태와 보관 기준
 
-현재는 8-A-3 로컬 구현 단계다. AWS CPU/HPA/OOM 실험 결과는 아직 없다.
-로컬 통과 결과는 앱과 정적 구성 검증이며 EKS 성능이나 OOMKilled의 증거가 아니다.
+CPU 본실험6회와 HPA 본실험6회를 완료했다. HPA는 관측 환경의 제한사항을 명시한 조건부 PASS다. 독립 Job OOM 비교는128Mi/256Mi 각1회 완료했다.
+[OOM 결과](oom-results-20261124.md), [CPU 결과](cpu-limit-results-20261124.md), [HPA 결과](hpa-results-20261124.md),
+[HPA Pilot](hpa-pilot-results-20261124.md), [배포 검증](deployment-verification-20261123.md)에 실제 수치를 정리했다.
+로컬 테스트 통과와 실제 AWS 측정은 구분하며, 아래 원본 보관 원칙은 유지한다.
 
 - `local/`: 로컬 테스트·렌더 결과. Git 제외.
 - `private/<run-id>/`: 실제 실험 원본. Git 제외. renderer가 새 경로만 생성하며 기존 파일을 덮어쓰지 않는다.
