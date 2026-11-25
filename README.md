@@ -1,70 +1,71 @@
-# 인프라 구축과 장애 실험 기록
+<!-- 메인 README: 전체 포트폴리오 소개 / 개별 실험 그래프와 증빙은 각 상세 문서에서 제공 -->
 
-Linux와 Kubernetes에서 장애 조건을 만들고, AWS에 API를 배포해 요청과 상태가 어떻게 달라지는지 확인했습니다.
-설정을 바꾸기 전후의 응답, 로그, 지표를 비교한 기록입니다.
+![AWS 기반 인프라 운영과 장애 대응 실험 기록. Project Aegis의 AWS EKS 구축·Blue/Green 배포·확장 관측과 Engineering Lab의 TCP·OOM·Kubernetes Service·Terraform Drift·종료 처리 실험을 소개하는 전체 구성도](assets/infrastructure-portfolio-overview.png)
 
-AWS 배포·운영 실험인 **Project Aegis**와 개별 현상을 다룬 **Engineering Lab**으로 구성했습니다.
+AWS에 서비스 환경을 구축하고, 배포와 운영 과정에서 시스템이 어떻게 동작하는지 직접 확인했습니다. 외부 요청의 응답뿐 아니라 Kubernetes 리소스 상태와 시스템 지표를 함께 살펴보며, 예상과 달랐던 결과의 원인을 찾아가는 데 집중했습니다.
 
-## Project Aegis
+이를 중심으로 진행한 **Project Aegis**의 구축·배포·운영 실험과, Linux·네트워크·Kubernetes의 동작을 개별적으로 확인한 **Engineering Lab**을 함께 정리했습니다.
 
-AWS에 API를 배포하고, Pod 삭제나 배포 대상의 장애가 외부 요청에 어떤 영향을 주는지 확인했습니다.
-이후 별도 EKS 환경에서 CPU 제한과 HPA 동작도 비교했습니다.
-인프라는 Terraform으로 VPC·EKS를 구축하고, ECR의 Python API를 ALB에 연결했습니다.
+---
 
-GitHub Actions에서 실행한 범위는 CI와 OIDC 기반 ECR 게시까지입니다.
-EKS 배포와 Rollback은 수동으로 진행했으며, Blue/Green에는 같은 이미지 digest를 사용해 슬롯을 구분했습니다.
+## A. Project Aegis
 
-배포 실험은 기존 인프라 코드를 재사용해 환경을 다시 구축했습니다.
-CPU Limit·HPA·OOM 실험은 기존 ECR을 참조하는 별도 EKS·Terraform State 환경에서 수행했습니다.
+Terraform으로 AWS 네트워크와 EKS를 구성하고 API 서비스를 배포했습니다. 구축한 환경을 바탕으로 Pod 교체 시 외부 응답을 관측했고, 인프라 구성을 다시 만든 환경에서 Blue/Green 전환과 복구를 실험했습니다. CPU 제한·HPA·OOM은 별도의 EKS 측정 환경에서 다뤘습니다.
 
-- [EKS 인프라와 Pod 복구](investigations/06-aws-eks-infrastructure/README.md)
-- [Blue/Green 업무 API 장애](investigations/07-safe-deployment/README.md)
-- [CPU 제한과 HPA 관측](investigations/08-observability-scaling/README.md)
+### 배포 전환과 실제 API 응답
 
-## Engineering Lab
+Blue에서 Green으로 트래픽을 전환한 뒤 업무 API에 장애를 주입했습니다. `/healthz`, `/readyz`와 ALB Target Health는 정상이었지만, 외부의 `/api/info` 요청은 **11회 모두 HTTP 503**을 반환했습니다. 이후 가중치를 Blue로 수동 복귀시켜 **21회 모두 HTTP 200**을 확인했습니다. Blue와 Green에는 동일한 이미지 digest를 사용했습니다.
 
-TCP 연결 지연, Linux 메모리 제한, Kubernetes Service 연결 실패, Terraform 설정 변경, 종료 중인 요청 처리를 다룬 다섯 가지 독립 실험입니다.
-조건을 바꿔 증상을 만들고 응답·로그·상태를 비교했습니다.
+[Blue/Green 배포·복구 상세 기록](investigations/07-safe-deployment/README.md)
 
-종료 실험에서는 진행 중인 요청의 종료 방식 비교와 Worker Drain 관찰을 나눠 진행했습니다.
-로컬 kind 실험이며 실제 AWS Spot 중단을 재현한 것은 아닙니다.
+### Pod 교체 중 요청 흐름
 
-## 대표 관측 사례
+API Pod 두 개 가운데 하나를 삭제하고 약 1초 간격으로 외부 요청을 보냈습니다. **순차 요청 90건은 모두 HTTP 200**이었고, 삭제 기록부터 새 Pod의 첫 외부 응답까지는 약 **7초**였습니다. 이 수치는 관측한 두 시점 사이의 간격이며, 일반적인 장애 복구시간을 의미하지 않습니다.
 
-### [Healthy인데 업무 API는 503이었다](investigations/07-safe-deployment/README.md)
+[EKS 구축·Pod 교체 상세 기록](investigations/06-aws-eks-infrastructure/README.md)
 
-헬스 체크가 정상이어도 업무 API는 실패했습니다. Green에 장애를 주입하고 Ingress의 가중치를 Blue로 되돌린 뒤, 실제 API 응답이 정상으로 돌아오는 과정을 따라갔습니다.
+### 리소스 제한과 확장 동작
 
-### [대기열을 늘렸는데도 HTTP 타임아웃은 그대로였다](investigations/01-tcp-listen-queue/README.md)
+별도 EKS 환경에서 CPU 제한과 지연을 비교했습니다. HPA는 **1→2→1 Pod**로 확장·축소했지만, 이번 부하 조건에서는 응답 지연 개선이 측정되지 않았습니다. 메모리 한도에 따른 OOM 종료도 독립 Job으로 확인했습니다.
 
-동시 요청 30개 중 22개가 시간 안에 응답을 받지 못했습니다. 대기열을 늘리자 Overflow 증가는 사라졌지만 실패 건수는 같았습니다. 연결을 받아들이는 지연을 없앤 조건에서는 30개 모두 성공했습니다.
+[CPU·HPA·OOM 상세 기록](investigations/08-observability-scaling/README.md)
 
-### [CPU 제한을 풀고 Pod를 늘리면 성능도 좋아질까?](investigations/08-observability-scaling/README.md)
+---
 
-CPU Limit을 바꾸고 HPA를 켜고 끄며 요청 처리 결과를 비교했습니다.
-HPA는 1→2→1로 동작했고 CPU 부하는 분산됐지만, 응답 지연이나 처리량 개선을 입증하지는 못했습니다.
+## B. Engineering Lab
 
-## 전체 실험 보기
+Engineering Lab에서는 Linux·네트워크·Kubernetes의 동작을 작은 환경에서 따로 확인했습니다. 같은 접속 실패나 프로세스 종료라도 원인은 다를 수 있어, 요청 결과만 보지 않고 커널 기록과 Kubernetes 리소스 상태를 함께 살펴봤습니다.
 
-각 README에서 코드·설정·결과 자료와 재현 조건을 확인할 수 있습니다.
-번호는 기존 실험을 찾기 위한 구분이며, 아래 두 영역이 하나의 통합 시스템으로 구현된 것은 아닙니다.
+### TCP 대기열과 연결 수락 지연
 
-<details>
-<summary>Project Aegis · 구축, 배포와 복구, 자원 관측</summary>
+동시 요청 30개를 보내며 `backlog`와 연결 수락 지연을 각각 바꿨습니다. 대기열을 늘리자 Listen Overflow 증가는 사라졌지만 HTTP 성공은 **8/30**으로 같았고, 인위적인 수락 지연을 제거한 뒤에는 **30/30**이 응답했습니다.
 
-- [AWS EKS 구축과 Pod 복구 · 06](investigations/06-aws-eks-infrastructure/README.md)
-- [ALB Blue/Green과 업무 API 장애 · 07](investigations/07-safe-deployment/README.md)
-- [CPU Limit·HPA·독립 Job OOM · 08](investigations/08-observability-scaling/README.md)
+[TCP Listen Queue 상세 기록](investigations/01-tcp-listen-queue/README.md)
 
-</details>
+### Linux 메모리 제한과 OOM
 
-<details>
-<summary>Engineering Lab · 다섯 가지 장애 조사</summary>
+VM에는 여유 메모리가 남아 있었지만, 64MiB로 제한한 cgroup 안에서는 프로세스가 OOM으로 종료됐습니다. 커널의 `CONSTRAINT_MEMCG` 기록과 메모리 사용량을 함께 확인해 시스템 전체의 메모리 부족과 구분했습니다.
 
-- [TCP 대기열과 연결 수락 지연 · 01](investigations/01-tcp-listen-queue/README.md)
-- [시스템 여유 메모리와 cgroup OOM · 02](investigations/02-linux-oom-cgroup/README.md)
-- [Service selector 장애의 DNS·HTTP 응답 · 03](investigations/03-kubernetes-dns/README.md)
-- [Terraform Drift 탐지와 복구 · 04](investigations/04-terraform-drift/README.md)
-- [종료 중 요청과 Worker Drain · 05](investigations/05-spot-graceful-shutdown/README.md)
+[Linux OOM·cgroup 상세 기록](investigations/02-linux-oom-cgroup/README.md)
 
-</details>
+### Kubernetes Service 연결
+
+Service 이름은 정상적으로 IP로 해석됐는데 HTTP 연결은 실패했습니다. DNS 자체가 아니라 Service selector가 Pod 라벨과 맞지 않아 EndpointSlice에 연결 대상이 없었던 상황으로, selector 복구 후 HTTP 200까지 확인했습니다.
+
+[Kubernetes Service 연결 상세 기록](investigations/03-kubernetes-dns/README.md)
+
+### Terraform 설정 변경 감지
+
+AWS 콘솔에서 보안 그룹 인바운드 규칙을 직접 변경하고 `terraform plan`의 차이를 살펴봤습니다. 코드와 달라진 규칙을 감지한 뒤 변경 범위를 검토하고 수동으로 복구했습니다.
+
+[Terraform Drift 상세 기록](investigations/04-terraform-drift/README.md)
+
+### 종료 신호와 진행 중인 요청
+
+로컬 kind에서 SIGTERM 직후 종료하는 방식과 처리 중인 요청을 마친 뒤 종료하는 방식을 비교했습니다. 별도의 Worker Drain 실험에서는 Pod 퇴거·재배치와 요청 응답을 관측했으며, 실제 Spot 인스턴스 중단을 발생시킨 실험은 아닙니다.
+
+[SIGTERM·Worker Drain 상세 기록](investigations/05-spot-graceful-shutdown/README.md)
+
+---
+
+<sub>실험 환경 · AWS 서울 리전 (`ap-northeast-2`), Linux VM, 로컬 kind. 실험별 설정·로그·그래프·재현 조건은 각 상세 README에 정리했습니다. GitHub Actions의 자동화 범위는 OIDC 기반 ECR 이미지 게시까지이며, EKS 배포와 트래픽 복귀는 수동으로 수행했습니다.</sub>
