@@ -10,29 +10,29 @@ AWS에 서비스 환경을 구축하고, 배포와 운영 과정에서 시스템
 
 ## A. Project Aegis
 
-AWS에 서비스 환경을 직접 구축하면서 권한, 비용, 가용성을 어떻게 정할지 고민했고, 만든 환경에서 배포와 장애 상황의 동작을 확인했습니다. Terraform으로 VPC·EKS·IAM·ECR을 구성해 Python API를 배포했고, Pod 교체와 Blue/Green 전환 때의 외부 응답을 관측했습니다. Blue/Green 실험은 같은 구성을 다시 만든 환경에서, CPU 제한·HPA·OOM은 별도의 EKS 측정 환경에서 진행했습니다.
+AWS에 서비스 환경을 직접 구축하면서 권한과 비용, 가용성을 어떻게 정할지 고민했고, 구축한 환경에서 배포와 장애 상황의 동작을 확인했습니다. Blue/Green 실험은 같은 구성을 다시 만든 환경에서, CPU 제한·HPA·OOM은 별도의 EKS 측정 환경에서 진행했습니다.
 
 ### 권한이 없어 구축이 멈췄을 때
 
-가장 오래 걸린 건 코드를 쓰는 일이 아니라 권한과 부분 배포 상태를 다루는 일이었습니다. Terraform이 EIP를 만든 뒤 `ec2:DescribeAddressesAttribute` 권한이 없어 중간에 멈췄는데, VPC와 서브넷은 이미 만들어진 상태라 처음부터 다시 실행할 수 없었습니다. 오류 메시지, 실제 AWS의 EIP, Terraform State, 새 Plan을 차례로 대조한 뒤 State를 백업하고 `untaint`로 복구했습니다. 역할 관리 정책이 인라인 정책 2,048자 제한에 걸렸을 때는 권한을 넓히는 대신 같은 정책을 고객 관리형 정책으로 옮겼고, Node Group 생성은 `iam:PassRole`에서 허용한 대상 서비스가 실제와 달라 실패해 정책을 고쳤습니다.
+Terraform으로 VPC·EKS·IAM·ECR을 구성하다가 `ec2:DescribeAddressesAttribute` 권한이 없어 구축이 중간에 멈췄습니다. 이미 만들어진 리소스가 있어 처음부터 다시 실행할 수 없었고, 실제 AWS 상태와 Terraform State, 새 Plan을 차례로 대조한 뒤 복구했습니다. NAT Gateway는 실습 비용을 줄이려고 하나만 두었고, 그 대신 NAT가 있는 AZ에 장애가 나면 다른 AZ도 외부 통신이 끊기는 한계가 있습니다. 권한은 오류를 분석하며 범위를 나눴지만, 모두 최소 권한으로 완성한 것은 아닙니다.
 
-NAT Gateway는 실습 비용을 줄이려고 하나만 두었습니다. 그 대신 NAT가 있는 AZ에 장애가 나면 다른 AZ의 Private 서브넷도 외부 통신이 끊기는 구조이고, 비용을 실제로 얼마나 줄였는지는 측정하지 않았습니다. GitHub Actions는 OIDC로 ECR에 이미지를 게시하는 데까지만 사용했고, 신뢰 정책은 main 브랜치로, 게시 권한은 ECR 저장소 하나로 좁혔습니다. 다만 일부 관리 정책은 리소스 범위가 `*`이고 CNI 정책은 Node Role에 연결해 둔 상태여서, 최소 권한을 완성했다고 보지는 않습니다.
-
-[EKS 구축·권한 문제 상세 기록](investigations/06-aws-eks-infrastructure/README.md) · [CI·OIDC 상세 기록](investigations/07-safe-deployment/CI-CD.md)
+[EKS 구축·권한 문제 상세 기록](investigations/06-aws-eks-infrastructure/README.md)
 
 ### 정상이라고 나오는데 API는 실패했을 때
 
-Blue에서 Green으로 트래픽을 전환한 뒤 업무 API에 장애를 일부러 주입했습니다. `/healthz`, `/readyz`와 ALB Target Health는 정상이었지만 외부의 `/api/info` 요청은 **11회 모두 HTTP 503**이었습니다. 가중치를 Blue로 직접 되돌리자 **21회 모두 HTTP 200**을 확인했습니다. 두 슬롯은 같은 이미지 digest를 사용했고, EKS 배포와 복귀는 수동으로 진행했습니다. 자동 배포나 자동 롤백은 구현하지 않았습니다. 이 실험으로 확인한 건 헬스체크 통과와 실제 업무 응답이 다를 수 있다는 점입니다.
+Blue에서 Green으로 트래픽을 전환한 뒤 업무 API에 장애를 일부러 주입했습니다. `/healthz`, `/readyz`와 ALB Target Health는 정상이었지만 외부의 `/api/info` 요청은 **11회 모두 HTTP 503**이었고, 가중치를 Blue로 되돌리자 **21회 모두 HTTP 200**을 확인했습니다. 두 슬롯은 같은 이미지를 사용했고 전환과 복귀는 수동이었습니다. 자동 배포나 롤백을 구현한 것은 아닙니다.
 
 [Blue/Green 배포·복구 상세 기록](investigations/07-safe-deployment/README.md)
 
-Pod를 하나 지웠을 때도 요청이 끊기는지 확인했습니다. API Pod 두 개 가운데 하나를 삭제하고 약 1초 간격으로 외부 요청을 보냈더니 **순차 요청 90건이 모두 HTTP 200**이었고, 삭제 기록부터 새 Pod의 첫 외부 응답까지는 약 **7초**였습니다. 이 수치는 관측한 두 시점 사이의 간격이며, 일반적인 장애 복구시간을 의미하지 않습니다.
+### Pod 하나를 지웠을 때
+
+API Pod 두 개 가운데 하나를 삭제하고 약 1초 간격으로 외부 요청을 보냈습니다. **순차 요청 90건은 모두 HTTP 200**이었고, 삭제 기록부터 새 Pod의 첫 외부 응답까지는 약 **7초**였습니다. 이 수치는 관측한 두 시점 사이의 간격이며, 일반적인 장애 복구시간을 의미하지 않습니다.
 
 [Pod 교체 중 요청 흐름 상세 기록](investigations/06-aws-eks-infrastructure/README.md)
 
 ### 한도를 걸고 부하를 줬을 때
 
-CPU 제한을 바꿔 가며 지연을 비교하고, HPA를 켜고 꺼 가며 확장 동작을 봤습니다. HPA는 **1→2→1 Pod**로 늘고 줄었지만 Pod 하나로도 30 RPS를 처리해서, 응답 지연이나 처리량이 좋아졌다고는 말할 수 없었습니다. 메모리 한도는 독립 Job으로 비교했고, 128Mi에서는 OOMKilled, 256Mi에서는 정상 종료됐습니다.
+CPU 제한을 바꿔 가며 지연을 비교하고 HPA를 켜고 꺼 가며 확장 동작을 봤습니다. HPA는 **1→2→1 Pod**로 늘고 줄었지만 Pod 하나로도 30 RPS를 처리해서, 응답 지연이나 처리량이 좋아졌다고는 말할 수 없었습니다. 메모리 한도는 독립 Job으로 비교했고, 128Mi에서는 OOMKilled, 256Mi에서는 정상 종료됐습니다.
 
 [CPU·HPA·OOM 상세 기록](investigations/08-observability-scaling/README.md)
 
