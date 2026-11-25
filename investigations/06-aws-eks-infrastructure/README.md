@@ -1,12 +1,14 @@
-# AWS EKS 구축과 Pod 삭제 중 외부 응답 관측
+# 권한 오류로 멈춘 EKS 구축, 그리고 Pod를 지웠을 때의 외부 응답
 
 Project Aegis의 기반 환경으로 Terraform을 사용해 AWS 서울 리전에 네트워크와 EKS를 구축하고, Private Subnet의 Python API를 ALB에 연결했다. 이후 실제 Pod를 삭제하면서 외부 HTTP 응답과 자동 복구 과정을 관측했다.
+
+구축 과정에서 가장 오래 걸린 건 매니페스트가 아니라 **AWS 권한과 부분 배포 상태**였다. EIP 속성 조회 권한(`ec2:DescribeAddressesAttribute`)이 없어 Terraform이 중간에 멈췄고, 오류 메시지·실제 AWS 리소스·State·새 Plan을 대조해 복구했다(4장). 인라인 정책 2,048자 제한은 같은 정책을 고객 관리형 정책으로 옮겨 해결했고(5장), Node Group은 `iam:PassRole`에서 허용한 대상 서비스가 실제와 달라 실패했다(6장). NAT Gateway는 실습 비용을 줄이려고 하나만 두었으며, 이 선택의 가용성 한계와 비용 범위는 10장에 적었다. 최소 권한을 완성했다고 설명하지 않는다.
 
 이번 실험에서는 **Terraform State, AWS 리소스 상태, Kubernetes 상태, 외부 HTTP 응답**을 각각 확인했다. 도구 하나에서 정상이라고 표시되는 것만으로 서비스 전체가 정상이라고 판단하지 않았다.
 
 Pod 한 개를 삭제한 관측 구간에서 외부 순차 요청 **90건 모두 HTTP 200**을 반환했다. 삭제 요청 기록에서 새 Pod의 첫 외부 응답까지는 **약 7초**였다. 이는 정확한 Pod Ready 시간이나 노드 복구시간이 아니며, RTO나 무중단 보장을 검증한 결과도 아니다.
 
-[아키텍처](#아키텍처) · [Pod 삭제 관측](#9-pod-장애-주입과-실제-응답) · [구축 중 EIP 복구 과정](#4-eip-조회-권한-오류와-부분-배포-복구)
+[아키텍처](#아키텍처) · [구축 중 EIP 복구 과정](#4-eip-조회-권한-오류와-부분-배포-복구) · [IAM 권한 이슈](#5-iam-권한-구성에서-겪은-추가-이슈) · [Pod 삭제 관측](#9-pod-장애-주입과-실제-응답) · [한계와 비용](#10-한계-비용-운영-판단)
 
 ## 1. 실험 당시 구축 상태
 
@@ -224,7 +226,7 @@ ALB 경유 20회 요청에서 두 Pod가 각각 10회 응답했고, AWS Target G
 
 Terraform은 VPC·EKS·IAM·ECR 등을 관리하고, ALB와 Target Group은 Kubernetes Controller가 관리한다. 따라서 Terraform `No changes`는 Controller 관리 리소스의 정상 상태까지 보장하지 않는다.
 
-후속 [STEP 07](../07-safe-deployment/README.md)은 이 인프라 코드를 재사용해 환경을 재구축했고, 새 ALB에서 Blue/Green 슬롯 전환을 관측했다. [STEP 08](../08-observability-scaling/README.md)은 기존 ECR을 참조하는 별도 EKS·Terraform State 환경에서 자원과 확장 동작을 비교했다.
+후속 [07 Blue/Green 기록](../07-safe-deployment/README.md)은 이 인프라 코드를 재사용해 환경을 재구축했고, 새 ALB에서 Blue/Green 슬롯 전환을 관측했다. [08 CPU·HPA·OOM 기록](../08-observability-scaling/README.md)은 기존 ECR을 참조하는 별도 EKS·Terraform State 환경에서 자원과 확장 동작을 비교했다.
 
 ## 11. 코드 및 증빙
 

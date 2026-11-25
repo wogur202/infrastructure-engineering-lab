@@ -154,18 +154,18 @@ SIGTERM에 즉시 종료하는 v1에서는 진행 중인 요청이 실패했지�
 
 별도의 Worker Drain 실험에서는 Pod 퇴거 및 재배치가 이루어졌고, 관측한 HTTP 요청 20건은 모두 성공했다.
 
-STEP 05를 마쳤을 때는 실제 Spot 중단 처리와 Kubernetes 트래픽 제외·종료 절차를 연결하는 AWS/EKS 검증을 후속 계획으로 남겼다. 이 문서는 그 계획의 수행 여부나 STEP 06~08에 같은 종료 처리가 적용됐음을 증명하지 않는다.
+이 실험을 마쳤을 때는 실제 Spot 중단 처리와 Kubernetes 트래픽 제외·종료 절차를 연결하는 AWS/EKS 검증을 후속 계획으로 남겼다. 이 문서는 그 계획의 수행 여부나 06~08에 같은 종료 처리가 적용됐음을 증명하지 않는다.
 
 ## 9. 로컬 환경에서 재현하기
 
-아래는 저장된 코드로 다시 실험하기 위한 명령이다. 이번 문서 점검에서는 실행 중인 환경을 바꾸지 않기 위해 클러스터 생성·이미지 빌드·배포·Drain을 다시 실행하지 않았다. 명령어의 셸 구문과 코드·설정의 일치 여부를 확인했으며, `spot-http.yaml`은 Kubernetes v1.34.0 공식 OpenAPI 스키마로 정적 검증했다. 실제 클러스터 버전의 API 서버 검증과 전체 재실행 검증은 하지 않았다. 기존 `evidence/`는 원본 기록으로 두고, 재현 결과는 Git에서 제외한 `.local/`에 저장한다.
+아래는 저장된 코드로 다시 실험하기 위한 명령이다. 문서를 정리할 때는 실행 중인 환경을 바꾸지 않기 위해 클러스터 생성·이미지 빌드·배포·Drain을 다시 실행하지 않았다. 명령어의 셸 구문과 코드·설정의 일치 여부를 확인했으며, `spot-http.yaml`은 Kubernetes v1.34.0 공식 OpenAPI 스키마로 정적 검증했다. 실제 클러스터 버전의 API 서버 검증과 전체 재실행 검증은 하지 않았다. 기존 `evidence/`는 원본 기록으로 두고, 재현 결과는 Git에서 제외한 `.local/`에 저장한다.
 
 ### 9.1 준비 및 3노드 클러스터 생성
 
-Docker 엔진이 실행 중이어야 하며, `kind`, `kubectl`, `curl`, Bash가 필요하다. 저장소를 받은 뒤 STEP 05 디렉터리로 이동한다. 아래의 `~/infrastructure-engineering-lab`은 예시 체크아웃 위치이며, 실제 저장소 위치에 맞춰 이동하면 된다.
+Docker 엔진이 실행 중이어야 하며, `kind`, `kubectl`, `curl`, Bash가 필요하다. 저장소를 받은 뒤 05 디렉터리로 이동한다. 아래의 `~/infrastructure-engineering-lab`은 예시 체크아웃 위치이며, 실제 저장소 위치에 맞춰 이동하면 된다.
 
 ```bash
-cd ~/infrastructure-engineering-lab/investigations/05-spot-graceful-shutdown
+cd ~/infrastructure-engineering-lab/investigations/05-graceful-shutdown
 bash
 mkdir -p .local
 export KUBECONFIG="$PWD/.local/kubeconfig"
@@ -324,7 +324,7 @@ cat .local/http-during-drain-repro.txt
 터미널 B도 Bash에서 같은 디렉터리와 kubeconfig를 사용한다. A에서 측정을 시작한 뒤 약 5초 후 Cordon/Drain을 수행한다. Drain 자체도 노드를 스케줄 불가 상태로 만들지만, 여기서는 Cordon을 별도로 실행해 단계를 구분한다.
 
 ```bash
-cd ~/infrastructure-engineering-lab/investigations/05-spot-graceful-shutdown
+cd ~/infrastructure-engineering-lab/investigations/05-graceful-shutdown
 export KUBECONFIG="$PWD/.local/kubeconfig"
 sleep 5
 kubectl --context kind-spot-lab cordon spot-lab-worker

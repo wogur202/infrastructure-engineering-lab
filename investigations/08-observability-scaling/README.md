@@ -1,15 +1,12 @@
-# STEP 08 — CPU Limit, HPA, OOM 관측
+# HPA 확장 동작과 실제 응답 성능 비교
 
-## 실험을 진행한 이유
+## 무엇을 확인했나
 
-Pod에 CPU·메모리 제한을 걸었을 때 요청 처리와 종료 상태가 어떻게 달라지는지 확인했다.
-CPU Limit 비교, HPA OFF/ON 비교, 독립 Job의 메모리 Limit 비교를 각각 진행했다.
-각 비교 안에서는 요청률과 작업량 등 나머지 조건을 맞추고, 바꾼 조건에 따른 지표와 종료 상태를 비교했다.
-예상과 다른 지연, 중단한 실행, 수집하지 못한 값도 결과와 함께 남겼다.
+Pod에 CPU·메모리 제한을 걸고 HPA를 켰을 때 요청 처리와 종료 상태가 어떻게 달라지는지 확인했다. 비교는 세 가지다. CPU Limit(250m / 1000m), HPA OFF / ON, 독립 Job의 메모리 Limit(128Mi / 256Mi). 각 비교에서는 요청률과 작업량을 맞추고 바꾼 조건만 달리했다.
 
-CPU 비교 6회, HPA OFF/ON 각 3회, 독립 Job OOM 비교 각 1회를 완료했다.
-HPA의 확장·축소와 CPU 분산은 확인했지만 응답 지연이나 처리량 개선은 입증하지 못했다.
-관측기인 node-exporter에도 CFS 제한이 발생했다. 원래 중단 기준을 모두 충족하지 못한 점을 남기고, 미세한 지연 차이는 제한적으로 해석했다.
+결과부터 말하면, HPA는 Pod를 1→2→1로 늘리고 줄였고 CPU도 두 Pod로 나뉘었지만 응답 지연이나 처리량이 좋아졌다고는 말할 수 없었다. Pod 한 개도 이번 부하를 이미 처리하고 있었기 때문이다. 예상과 다른 지연, 중단한 실행, 수집하지 못한 값은 결과와 함께 남겼다.
+
+완료한 실행은 CPU 비교 6회, HPA OFF / ON 각 3회, 독립 Job OOM 각 1회다. 관측기인 node-exporter에도 CFS 제한이 발생해 원래 중단 기준을 모두 충족하지 못했고, 미세한 지연 차이는 제한적으로 해석했다.
 
 ## 핵심 결과
 
@@ -32,7 +29,7 @@ HPA로 늘어난 API 두 Pod도 같은 API Worker에서 실행했다. 노드 자
 | 네트워크 | VPC, public subnet 1개, private subnet 2개(2a/2c), NAT Gateway 1개 |
 | API | Python 3.12 표준 라이브러리 HTTP 서버, 고정 횟수 정수 연산 |
 | 관측 | kubelet cAdvisor의 CPU/CFS, Prometheus, kube-state-metrics, 별도 Metrics API |
-| 통제 | 같은 STEP08 이미지 digest, 같은 Node UID/providerID, API·발생기 역할별 배치 |
+| 통제 | 같은 측정용 이미지 digest, 같은 Node UID/providerID, API·발생기 역할별 배치 |
 | 제외한 구성 | ALB·Ingress·별도 EC2 발생기·PVC 없음 |
 
 | 비교 | 변경 변수 | 고정한 조건 |
@@ -108,7 +105,7 @@ bash scripts/local-check.sh --docker
 실제 AWS 측정의 성공 여부는 위 결과 문서와 구분해야 한다. 당시 범위는 [로컬 검증 기록](LOCAL-VALIDATION.md)에 남겼다.
 
 소스 Manifest의 image는 의도적으로 실행할 수 없는 placeholder다.
-실제 실험에는 새 STEP08 ECR digest와 W/RPS/run-id를 [render.py](scripts/render.py)에 명시해 private 경로에 렌더했다.
+실제 실험에는 새로 게시한 ECR digest와 W/RPS/run-id를 [render.py](scripts/render.py)에 명시해 private 경로에 렌더했다.
 계정·kubeconfig/context·노드 역할·Metrics API·Prometheus를 확인한 뒤 수동으로 배포와 부하 순서를 진행했다.
 [preflight.py](scripts/preflight.py)의 사전 검사를 통과해도 실제 부하 중 입력률·배치·지표와 실험 진행 조건은 별도로 확인해야 한다.
 HPA OFF 전환에는 기존 HPA 제거와 replica 1 Ready 확인이 별도로 필요하며, OOM은 관찰 부하를 먼저 시작해 전·후 60초를 확보했다.
@@ -118,12 +115,12 @@ HPA OFF 전환에는 기존 HPA 제거와 replica 1 Ready 확인이 별도로 �
 이미지 게시, 환경별 입력, 각 Trial의 시작·회복·수집 순서를 모두 자동화한 원클릭 재현을 제공하는 것은 아니다.
 스키마 검증도 실제 admission·IAM 권한·런타임 성능 검증을 대신하지 않는다.
 
-## STEP 06·07과의 관계
+## 앞선 구축·배포 기록과의 관계
 
-STEP 06·07의 EKS/API 패턴을 참고하되 STEP08 관측을 위한 별도 코드를 작성했다.
+06·07에서 쓴 EKS/API 구성을 참고하되, 이번 관측을 위한 별도 코드를 작성했다.
 기존 `aegis-api` ECR은 Terraform data로 참조하고, 새 환경의 State는 `terraform/.state/terraform.tfstate`로 분리했다.
 기존 State·ECR 이미지·GitHub OIDC/Publisher Role은 보존했다.
-STEP07 Workflow가 STEP08을 자동 빌드·배포한 구조는 아니며, STEP08 이미지는 별도로 게시해 digest로 고정했다.
+07의 Workflow가 이번 실험 이미지를 자동 빌드·배포한 구조는 아니며, 이 이미지는 별도로 게시해 digest로 고정했다.
 
 실험 종료 후 마지막 k6 Job까지 자연 완료됐고 API 1개 Ready, HPA OFF, Worker 2개 Ready, Prometheus 11/11 Up을 확인했다.
 실험 종료 당시 AWS 리소스는 보존했다. 예산 변수는 자동 과금 차단이나 삭제 타이머가 아니다.
@@ -185,8 +182,8 @@ VU 소진을 구별한다. 생성기/관측기 지속 CFS, scrape 누락, node p
 계정 ID는 필수 입력·provider allowed_account_ids로 확인하고 리전은 서울로 고정했다.
 VPC-CNI/CoreDNS/kube-proxy는1.36 호환 목록에서 조회한 managed Add-on 버전을 고정했다.
 노드 CNI 권한은 실험실 단순화를 위해 노드 역할에 남겨 두었다.
-8-A-4·5 당시 기존 정책10개로는 새 역할 관리와 EC2/EBS/ASG/LT 조회가 거부됐다.
-8-A-6에서 보완안을 검토하고 승인 후 `AegisStep08Supplement` 하나를 `terraform-lab`에
+구축 전 검토 당시 기존 정책10개로는 새 역할 관리와 EC2/EBS/ASG/LT 조회가 거부됐다.
+이후 보완안을 검토하고 승인 후 `AegisStep08Supplement` 하나를 `terraform-lab`에
 연결했다. 기존 정책10개와 Boundary 미설정 상태를 유지했고, 누락됐던 조회 API는 실제로
 성공했다. 대표 Simulator 평가도 통과했지만, 이 권한 검토 시점에 실제 생성·삭제 성공까지 검증한 것은 아니다.
 콘솔 요약에는 일부 작업·리소스·조건이 권한을 제공하지 않는다는 안내가 남아 있다.
@@ -214,21 +211,21 @@ NAT/EIP association이 오래된 값인지, 삭제 권한이 새 대상에도 �
 State가 비었다는 이유만으로 정리 완료라고 적지 않는다. 기존 ECR digest와 GitHub
 OIDC/Publisher Role 보존도 마지막에 확인한다. 이 구축 전 기록 단계에서는 삭제 명령을 실행하지 않았다.
 
-## 8. 구축 전 검증 범위 (8-A-5 기록)
+## 8. 구축 전 검증 범위
 
 로컬 앱·HTTP·amd64 이미지, 단위 테스트, Terraform fmt/validate, Helm template,
 YAML/JSON 및 Kubernetes OpenAPI/CRD 구조를 검증한다. 상세 로컬 결과는 이후 검증 보고에
 실제 통과/실패로 적는 계획이었다. 당시 AWS 생성·삭제 권한 전체, 네트워크 연결, addon/runtime
 호환성, 실제 allocatable, 메트릭 수집, pilot W/RPS, HPA 안정시간, OOMKilled, 비용 청구는
 미검증이었다. 당시 권한이 부족했던 사실과 아직 실행하지 않은 AWS 성공 여부를 구별했다.
-기존 STEP07 workflow는 경로 필터가07 전용이므로08 CI가 이미 동작한다고
+기존 07 workflow는 경로 필터가07 전용이므로08 CI가 이미 동작한다고
 설명하지 않는다. 이 구축 전 검토 단계에서는 Commit/Push 및 실제 배포를 하지 않았다.
 
 ## 9. 노드 라벨 절차와 자동/수동 gate (구축 전 초안 기록)
 
 `scripts/node_labels.py`의 기본 모드는 읽기 전용 inventory다. kubeconfig·context·
 예상 AWS 계정을 명시해야 하며 kubeconfig는600 권한으로 비공개 경로에 보관한다.
-이 초안을 작성한 구축 전 시점에는 STEP08 클러스터가 없어 아래 절차를 실행하지 않았다.
+이 초안을 작성한 구축 전 시점에는 이번 실험의 클러스터가 없어 아래 절차를 실행하지 않았다.
 
 별도 구축·검토 후 기본 inventory는 다음과 같이 수집한다. 노드 이름은 실제 조회 후
 서로 다른 두 이름을 선택해야 하며 임의로 만들어 넣지 않는다.
