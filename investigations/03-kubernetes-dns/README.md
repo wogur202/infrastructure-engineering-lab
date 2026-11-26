@@ -2,7 +2,7 @@
 
 <sub>Kubernetes · CoreDNS · Service · EndpointSlice<br>kind-cka (Kubernetes v1.37.0) · `dns-lab` 네임스페이스 · Nginx 1.27</sub>
 
-Service 이름은 IP로 해석됐는데, 같은 이름으로 보낸 HTTP 요청은 `Connection refused`로 끝났습니다. `dns-lab`에서 Service selector를 일부러 잘못 설정해 만든 상황으로, 실제 장애가 아니라 직접 주입한 오류입니다.
+Service 이름은 IP로 해석됐는데, 같은 이름으로 보낸 HTTP 요청은 `Connection refused`로 끝났습니다. `dns-lab`에서 selector를 일부러 잘못 설정해 만든 상황이고, 실제 장애는 아닙니다.
 
 ## 바꾼 것은 selector 하나
 
@@ -17,7 +17,7 @@ Nginx Pod의 라벨은 `app=web-test`입니다. Service selector를 `app=nonexis
 | 이름 해석 | Service 이름으로 요청 | `10.96.157.6`으로 해석 | Service 이름으로 요청 |
 | HTTP 요청 | [`200 OK`](evidence/http-baseline.txt) | [`Connection refused`](evidence/http-connection-refused.txt) (curl 종료 코드 7) | [`200 OK`](evidence/http-recovery.txt) |
 
-접속이 안 될 때 DNS만 보고 판단하면 놓칠 수 있다는 걸 이번에 확인했습니다. 다음에는 이름이 해석되는지 본 다음 selector와 EndpointSlice를 확인할 생각입니다. 다만 `Connection refused`가 이런 오류에서 늘 같은 방식으로 나타난다는 뜻은 아닙니다.
+접속이 안 될 때 DNS만 보고 판단하면 놓칠 수 있다는 걸 이번에 확인했습니다. 다음에는 이름이 해석되는지 본 다음 selector와 EndpointSlice를 확인할 생각입니다. `Connection refused`가 이런 오류의 항상 같은 증상이라는 뜻은 아닙니다.
 
 ## 조사 과정과 재현
 
@@ -58,7 +58,7 @@ Name:    web-svc.dns-lab.svc.cluster.local
 Address: 10.96.157.6
 ```
 
-그런데 HTTP 요청은 거부됐습니다. 이름 해석은 문제가 아니었고, Service가 요청을 넘길 Endpoint가 없는 게 원인이었습니다.
+하지만 HTTP 요청은 거부됐습니다. 이름 해석이 아니라 Service가 요청을 넘길 Endpoint가 없는 게 원인이었습니다.
 
 ```text
 * Host web-svc.dns-lab.svc.cluster.local:80 was resolved.
