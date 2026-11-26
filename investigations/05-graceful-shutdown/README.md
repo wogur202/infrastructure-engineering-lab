@@ -41,7 +41,7 @@ Drain 로그에는 `spot-lab-worker`의 서버 Pod가 퇴거된 기록이 있고
 
 v2 코드에는 종료 중 새 요청에 503을 돌려주는 분기가 있지만, 실제로 503이 나가는지는 보지 못했습니다. 대기가 끝났는지 확인하는 코드도 없어서, 종료 완료 로그가 찍혔다고 모든 요청이 끝났다고 할 수는 없습니다. 동시 요청도 시험하지 않았습니다.
 
-설정에도 확인하지 못한 부분이 있습니다. 종료 유예시간은 30초, 앱의 최대 대기는 10초로 두었지만 그 안에 반드시 끝난다는 보장은 아닙니다. Pod 분산은 `DoNotSchedule`일 때 RollingUpdate 중에 Pending이 생겨서 `ScheduleAnyway`로 바꿨는데, 당시 출력이 남아 있지 않아 원인은 확정하지 못했습니다. 이 설정이 Worker마다 하나씩 배치해 주는 것도 아닙니다. ([저장된 Deployment](evidence/deployment-v2.yaml))
+설정에도 확인하지 못한 것이 있습니다. 종료 유예시간은 30초, 앱의 최대 대기는 10초로 뒀지만 그 안에 반드시 끝난다고 보장하지는 못합니다. Pod 분산은 `DoNotSchedule`로 두면 RollingUpdate 중에 Pending이 생겨서 `ScheduleAnyway`로 바꿨습니다. 당시 출력이 남아 있지 않아 원인은 확정하지 못했고, 이 설정이 Worker마다 하나씩 배치해 주는 것도 아닙니다. ([저장된 Deployment](evidence/deployment-v2.yaml))
 
 마지막으로 `kubectl drain`은 계획된 퇴거를 지켜본 것이라서, Spot 중단 알림이나 노드가 꺼지기까지의 제한 시간, 자동 Drain은 다루지 않았습니다. 실제 Spot 중단 처리와 트래픽 제외 절차를 잇는 AWS/EKS 검증은 다음 과제로 남겼습니다.
 
