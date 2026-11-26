@@ -26,7 +26,7 @@ Ingress의 가중치 두 값만 바꿔 Green 100 / Blue 0으로 넘기고 다음
 
 Green Deployment의 `INJECT_API_FAILURE`를 0에서 1로 바꿨습니다. 헬스 경로는 그대로 200이라 Pod는 Ready, ALB는 Healthy를 유지했고 업무 요청만 실패했습니다. 외부 503을 확인한 직후 Ingress 가중치만 Blue로 되돌렸고, 정상 응답을 확인한 뒤 Green 환경변수를 원복했습니다. Blue Deployment와 이미지는 건드리지 않았습니다.
 
-가장 먼저 볼 것은 세 가지입니다. Green의 헬스 경로는 200이었고, Green의 업무 API는 11회 모두 503이었고, Blue로 되돌린 뒤 업무 API는 21회 모두 200이었습니다.
+Green의 헬스 경로는 200인데 업무 API는 11회 모두 503이었고, Blue로 되돌리자 21회 모두 200이 나왔습니다.
 
 | 관측 지점 | 결과 | 증빙 |
 |---|---|---|
@@ -39,13 +39,13 @@ Green Deployment의 `INJECT_API_FAILURE`를 0에서 1로 바꿨습니다. 헬스
 | Green 원복 | `INJECT_API_FAILURE=0`, Pod 업무 API 200, 원래 Deployment spec과 일치 | [원복 Pod 응답](evidence/04-recovery/restored-individual-pods.json) |
 | 최종 상태 | 양쪽 Target Healthy 2/2, Blue 100 / Green 0, 외부 Blue 200 | [Target 콘솔 기록](evidence/04-recovery/console-restored-health-observation.json), [선별 리소스](evidence/04-recovery/final-resources-selected.json), [최종 HTTP](evidence/04-recovery/final-http.json) |
 
-Patch 수락부터 최초 Blue 200 관측까지는 약 20.10초였습니다. 콘솔 확인을 기다린 시간이 들어 있어서, 연속 부하를 주고 잰 ALB 전파 시간이나 정확한 복구 시간은 아닙니다. 콘솔 확인 시각도 AWS 상태가 처음 바뀐 시각을 뜻하지 않습니다.
+Patch 수락부터 최초 Blue 200 관측까지는 약 20.10초였습니다. 다만 이 20초에는 콘솔 확인을 기다린 시간이 들어 있어서, ALB 전파 시간이나 정확한 복구 시간으로 읽을 수는 없습니다. 콘솔 확인 시각도 AWS 상태가 처음 바뀐 시각은 아닙니다.
 
 ## 첫 시도에서 놓친 것
 
 첫 시도는 Green RollingUpdate 직후 `len(pods)==2` 검사에서 멈췄습니다. 라벨로 조회하면 종료 중인 이전 Pod까지 잡혔기 때문입니다.
 
-외부 503과 Target Health를 함께 확인하기 전이어서 완료로 기록하지 않았고, 안전 복구 로직으로 Blue 100과 Green 정상 설정을 복원했습니다. ([오류](evidence/03-failure-rollback/first-attempt-error.json), [타임라인](evidence/03-failure-rollback/first-attempt-timeline.json))
+외부 503과 Target Health를 함께 확인하기 전이어서 완료로 기록하지 않았고, 안전 복구 로직으로 Blue 100과 Green 정상 설정을 복원했습니다. ([오류](evidence/03-failure-rollback/first-attempt-error.json), [타임라인](evidence/03-failure-rollback/first-attempt-timeline.json)) 이 안전 복구는 최종 실험의 수동 Rollback과는 별개입니다.
 
 재실험에서는 종료 중인 Pod를 빼고 현재 ReplicaSet의 활성 Pod만 셌습니다.
 
@@ -53,15 +53,15 @@ Patch 수락부터 최초 Blue 200 관측까지는 약 20.10초였습니다. 콘
 - 그 Pod의 Ready와 이미지 Digest, Deployment의 Replicas와 `observedGeneration`을 확인했습니다.
 - 활성 Pod IP와 EndpointSlice IP를 대조했습니다.
 
-안정화 대기는 최대 120초로 두고, 명백한 실패는 바로 중단하게 했습니다. 이 보완은 실행용 임시 스크립트에만 적용했고, 저장소의 앱·Manifest·CI/CD에는 들어가 있지 않습니다. 첫 시도에서 쓴 안전 복구 로직과 최종 실험의 수동 Rollback은 별개입니다.
+안정화 대기는 최대 120초로 두고, 명백한 실패는 바로 중단하게 했습니다. 이 보완은 실행용 임시 스크립트에만 넣었고, 저장소의 앱·Manifest·CI/CD에는 없습니다.
 
 ## 남은 한계
 
-Pod Ready, ALB Target Healthy, 실제 사용자 응답은 서로 다른 관측이었습니다. `/healthz`만 봤다면 이번 업무 API 장애는 놓쳤을 것입니다.
+Pod Ready, ALB Target Healthy, 실제 사용자 응답은 서로 다른 관측이었습니다. `/healthz`만 봤다면 이번 업무 API 장애는 놓쳤을 겁니다.
 
-그래서 배포 뒤에는 업무 경로 Smoke Test가 필요하고, 복구도 설정을 바꾸는 데서 끝내지 않고 실제 응답까지 봐야 합니다.
+그래서 앞으로는 배포 뒤에 업무 경로 Smoke Test까지 보고, 복구도 설정을 바꾸는 데서 끝내지 않고 실제 응답을 확인하려고 합니다.
 
-이번 결과를 읽을 때 주의할 점은 다음과 같습니다.
+확인하지 못한 범위는 아래와 같습니다.
 
 | 구분 | 주의할 점 |
 |---|---|
