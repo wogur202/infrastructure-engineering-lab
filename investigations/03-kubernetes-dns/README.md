@@ -2,11 +2,11 @@
 
 <sub>Kubernetes · CoreDNS · Service · EndpointSlice<br>kind-cka (Kubernetes v1.37.0) · `dns-lab` 네임스페이스 · Nginx 1.27</sub>
 
-Service 이름은 IP로 해석됐는데, 같은 이름으로 보낸 HTTP 요청은 `Connection refused`로 끝났습니다. DNS 조회가 성공해도 접속이 안 될 수 있는지 보려고, `dns-lab`에서 Service의 selector를 일부러 틀리게 바꿨다가 되돌려 봤습니다. 실제 장애가 아니라 직접 주입한 오류입니다.
+Service 이름은 IP로 해석됐는데, 같은 이름으로 보낸 HTTP 요청은 `Connection refused`로 끝났습니다. `dns-lab`에서 Service selector를 일부러 잘못 설정해 만든 상황으로, 실제 장애가 아니라 직접 주입한 오류입니다.
 
 ## 바꾼 것은 DNS가 아니라 selector 하나였습니다
 
-Nginx Pod의 라벨은 `app=web-test`인데 Service selector를 `app=nonexistent`로 바꾸자, 이름은 계속 해석됐지만 연결할 대상이 사라졌습니다. selector를 되돌리자 같은 이름으로 다시 HTTP 200이 나왔습니다. DNS 설정과 Nginx Pod는 건드리지 않았습니다.
+Nginx Pod의 라벨은 `app=web-test`입니다. Service selector를 `app=nonexistent`로 바꾸자 이름은 계속 해석됐지만 연결할 대상이 사라졌고, 원래대로 되돌리자 같은 이름으로 다시 HTTP 200이 나왔습니다. DNS 설정과 Nginx Pod는 건드리지 않았습니다.
 
 ![요청을 보낸 Pod는 CoreDNS에서 정상 응답을 받지만, web-svc는 selector 불일치로 EndpointSlice 대상이 없어 Nginx Pod에 연결하지 못하고 Connection refused가 반환되는 경로](evidence/service-selector-path.png)
 
@@ -24,14 +24,18 @@ Nginx Pod의 라벨은 `app=web-test`인데 Service selector를 `app=nonexistent
 <details>
 <summary>로그 · 정상, selector 오류, 복구, DNS 실패 유형</summary>
 
-정상 경로부터 확인했습니다. CoreDNS Deployment는 `2/2 Ready`였고, 테스트 Pod에서 `kubernetes.default.svc.cluster.local`을 조회하자 DNS 서버 `10.96.0.10`이 `10.96.0.1`로 해석했습니다. 이어 `web-test`(Nginx)와 `web-svc`를 만들고 Service 이름으로 요청하자 정상 응답이 왔습니다.
+### 1. 정상 경로
+
+CoreDNS Deployment는 `2/2 Ready`였고, 테스트 Pod에서 `kubernetes.default.svc.cluster.local`을 조회하자 DNS 서버 `10.96.0.10`이 `10.96.0.1`로 해석했습니다. 이어 `web-test`(Nginx)와 `web-svc`를 만들고 Service 이름으로 요청하자 정상 응답이 왔습니다.
 
 ```text
 HTTP/1.1 200 OK
 Server: nginx/1.27.5
 ```
 
-그다음 selector를 존재하지 않는 값으로 바꿨습니다.
+### 2. selector 오류 주입
+
+selector를 존재하지 않는 값으로 바꿨습니다.
 
 ```bash
 kubectl patch service web-svc -n dns-lab \
@@ -58,6 +62,8 @@ HTTP 요청만 거부됐습니다. 이름은 해석되고 있었고, 문제는 S
 curl: (7) Failed to connect
 ```
 
+### 3. 복구
+
 selector를 `app=web-test`로 되돌리자 EndpointSlice에 Nginx Pod IP가 다시 나타났고, 같은 이름으로 `HTTP 200`이 돌아왔습니다.
 
 ```text
@@ -65,7 +71,9 @@ NAME            ADDRESSTYPE   PORTS   ENDPOINTS
 web-svc-4kmtm   IPv4          80      10.244.0.8
 ```
 
-참고로 DNS 자체가 실패하는 경우도 따로 봤습니다. DNS 서버 주소를 일부러 `192.0.2.53`(문서·시험용 예약 주소)으로 지정하면 응답이 없었고, 정상 CoreDNS에 존재하지 않는 이름을 물으면 이름이 없다는 응답이 왔습니다. Timeout은 DNS 서버에서 응답이 오지 않은 경우이고, NXDOMAIN은 서버가 그 이름이 없다고 답한 경우입니다. Kubernetes의 DNS 장애를 발견한 게 아니라 실패 유형의 차이를 보려고 조건을 바꾼 테스트입니다.
+### 참고: DNS 자체가 실패하는 경우
+
+DNS 서버 주소를 일부러 `192.0.2.53`(문서·시험용 예약 주소)으로 지정하면 응답이 없었고, 정상 CoreDNS에 존재하지 않는 이름을 물으면 이름이 없다는 응답이 왔습니다. Timeout은 DNS 서버에서 응답이 오지 않은 경우이고, NXDOMAIN은 서버가 그 이름이 없다고 답한 경우입니다. Kubernetes의 DNS 장애를 발견한 게 아니라 실패 유형의 차이를 보려고 조건을 바꾼 테스트입니다.
 
 ```text
 ;; connection timed out; no servers could be reached
@@ -76,6 +84,8 @@ web-svc-4kmtm   IPv4          80      10.244.0.8
 
 <details>
 <summary>재현 명령 · 증빙 파일 · 보존 범위</summary>
+
+### 재현 명령
 
 `web-test`/`web-svc`가 없는 새 환경을 기준으로 핵심 흐름만 추렸습니다. 일회성 curl Pod의 결과는 `kubectl logs`로 확인했고, 실제 실험의 Pod 이름과는 일부 다릅니다.
 
@@ -96,12 +106,19 @@ kubectl run http-after -n dns-lab --image=curlimages/curl:8.11.1 --restart=Never
 kubectl logs http-after -n dns-lab
 ```
 
+### 증빙 파일
+
 - [`evidence/dns-baseline.txt`](evidence/dns-baseline.txt) — 기본 Kubernetes Service의 정상 DNS 조회
 - [`evidence/dns-timeout.txt`](evidence/dns-timeout.txt) · [`evidence/dns-nxdomain.txt`](evidence/dns-nxdomain.txt) — Timeout과 NXDOMAIN
 - [`evidence/http-baseline.txt`](evidence/http-baseline.txt) · [`evidence/http-connection-refused.txt`](evidence/http-connection-refused.txt) · [`evidence/http-recovery.txt`](evidence/http-recovery.txt) — 정상, 연결 거부, 복구 후의 HTTP 결과
 - [`evidence/workload-config.yaml`](evidence/workload-config.yaml) — 복구 후 Deployment·Service 설정 스냅샷
 - [`evidence/service-selector-path.png`](evidence/service-selector-path.png) — 위 경로 도식
 
-정상과 복구 단계의 증빙에는 이름 해석 기록이 따로 없고, Service 이름으로 보낸 HTTP 요청이 성공했다는 결과만 있습니다. 오류 주입 단계에서는 curl 출력에 `web-svc.dns-lab.svc.cluster.local`이 `10.96.157.6`으로 해석됐다고 나옵니다. EndpointSlice의 장애 전후 출력과 `web-svc`의 `Name`/`Address` 조회 출력은 당시 터미널에서 확인했지만 별도 원본 파일로 저장하지 못했습니다. `workload-config.yaml`은 복구 후 설정만 담고 있어서 장애 당시의 selector 상태를 증명하는 자료로는 쓰지 않습니다.
+### 보존 범위
+
+- 정상과 복구 단계의 증빙에는 이름 해석 기록이 따로 없고, Service 이름으로 보낸 HTTP 요청이 성공했다는 결과만 있습니다.
+- 오류 주입 단계에서는 curl 출력에 `web-svc.dns-lab.svc.cluster.local`이 `10.96.157.6`으로 해석됐다고 나옵니다.
+- EndpointSlice의 장애 전후 출력과 `web-svc`의 `Name`/`Address` 조회 출력은 당시 터미널에서 확인했지만 별도 원본 파일로 저장하지 못했습니다.
+- `workload-config.yaml`은 복구 후 설정만 담고 있어서 장애 당시의 selector 상태를 증명하는 자료로는 쓰지 않습니다.
 
 </details>
