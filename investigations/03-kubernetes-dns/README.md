@@ -58,7 +58,7 @@ Name:    web-svc.dns-lab.svc.cluster.local
 Address: 10.96.157.6
 ```
 
-하지만 HTTP 요청은 거부됐습니다. 이름 해석이 아니라 Service가 요청을 넘길 Endpoint가 없는 게 원인이었습니다.
+이름은 정상적으로 해석되는데 HTTP는 거부됐습니다. 원인은 DNS가 아니라 비어 있는 Endpoint였습니다.
 
 ```text
 * Host web-svc.dns-lab.svc.cluster.local:80 was resolved.
@@ -129,9 +129,9 @@ kubectl logs http-after -n dns-lab
 
 ### 증빙에 없는 것
 
-- 정상과 복구 단계에는 이름 해석을 따로 확인한 기록이 없고, Service 이름으로 보낸 HTTP 요청이 성공한 결과만 남아 있습니다.
+- 정상·복구 단계에서는 이름 해석을 따로 확인한 기록이 없습니다. Service 이름으로 보낸 HTTP 요청이 성공한 결과만 남아 있습니다.
 - 오류 주입 단계에서는 curl 출력에 `web-svc.dns-lab.svc.cluster.local`이 `10.96.157.6`으로 해석됐다고 찍혀 있습니다.
-- EndpointSlice의 장애 전후 출력과 `web-svc`의 `Name`/`Address` 조회 출력은 당시 터미널에서 봤지만 원본 파일로 저장하지 못했습니다.
-- `workload-config.yaml`은 복구 후 설정이라서, 장애 당시의 selector 상태를 보여 주는 자료로는 쓰지 않았습니다.
+- EndpointSlice의 장애 전후 출력과 `web-svc`의 `Name`/`Address` 조회 출력은 터미널에서 봤지만 원본 파일로 저장하지 못했습니다.
+- `workload-config.yaml`은 복구 후 설정이라, 장애 당시 selector 상태를 보여 주는 자료로는 쓰지 않았습니다.
 
 </details>
