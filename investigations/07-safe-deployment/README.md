@@ -14,7 +14,11 @@ Blue/Green 중 Green으로 트래픽을 넘긴 뒤 업무 API에만 장애를 �
 
 처음에는 Blue 100 / Green 0이었고 두 슬롯 모두 Target이 Healthy 2/2였습니다.
 
-Ingress의 가중치 두 값만 바꿔 Green 100 / Blue 0으로 넘겼고, Kubernetes에 적은 설정과 AWS 콘솔의 실제 Listener Rule을 따로 확인했습니다. 업무 API 요청은 [Blue](evidence/02-blue-green/normal-blue-http.json)와 [Green](evidence/02-blue-green/normal-green-http.json) 각각 21회(최초 1회 + 추가 20회) 모두 200이었고, [재실험 전 Green 기준선](evidence/02-blue-green/retry-green-baseline.json)도 11회 모두 Green 200이었습니다.
+Ingress의 가중치 두 값만 바꿔 Green 100 / Blue 0으로 넘기고 다음을 확인했습니다.
+
+- 설정: Kubernetes에 적은 값과 AWS 콘솔의 실제 Listener Rule을 따로 확인했습니다.
+- 외부 요청: 업무 API가 [Blue](evidence/02-blue-green/normal-blue-http.json)와 [Green](evidence/02-blue-green/normal-green-http.json) 각각 21회(최초 1회 + 추가 20회) 모두 200이었습니다.
+- 재실험 전 기준선: [Green 업무 API](evidence/02-blue-green/retry-green-baseline.json) 11회가 모두 Green 200이었습니다.
 
 두 슬롯은 같은 이미지 Digest를 쓰고, 응답의 `version`은 환경변수로 `17ea0b4-blue`, `17ea0b4-green`을 줬습니다. 그래서 이 실험은 슬롯 전환이고, 서로 다른 앱 버전 사이의 Rollback은 아닙니다.
 
