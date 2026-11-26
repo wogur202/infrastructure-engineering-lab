@@ -76,4 +76,4 @@ AWS 콘솔에서 보안 그룹 인바운드 규칙을 직접 변경하고 `terra
 
 <sub>실험 환경 · AWS 서울 리전 (`ap-northeast-2`), Linux VM, 로컬 kind. 실험별 설정·로그·그래프·재현 조건은 각 상세 README에 정리했습니다. GitHub Actions의 자동화 범위는 OIDC 기반 ECR 이미지 게시까지이며, EKS 배포와 복귀는 수동으로 수행했습니다.</sub>
 
-<sub>폴더 안내 · `investigations/06`~`08`은 Project Aegis, `01`~`05`는 Engineering Lab입니다.</sub>
+<sub>폴더 안내 · `investigations/06`–`08`은 Project Aegis, `01`–`05`는 Engineering Lab입니다.</sub>
