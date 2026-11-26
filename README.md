@@ -1,6 +1,6 @@
 <!-- 메인 README: 전체 포트폴리오 소개 / 개별 실험 그래프와 증빙은 각 상세 문서에서 제공 -->
 
-![AWS 기반 인프라 운영과 장애 대응 실험 기록. Project Aegis의 AWS EKS 구축·Blue/Green 배포·확장 관측과 Engineering Lab의 TCP·OOM·Kubernetes Service·Terraform Drift·종료 처리 실험을 소개하는 전체 구성도](images/infrastructure-portfolio-overview.png)
+![AWS 기반 인프라 운영과 장애 대응 실험 기록. Project Aegis의 AWS EKS 구축·Blue/Green 배포·확장 관측과 Engineering Lab의 TCP·OOM·Kubernetes Service·Terraform Drift·종료 처리 실험을 소개하는 전체 구성도](diagrams/portfolio-architecture.png)
 
 AWS에 서비스 환경을 직접 구축하고, 배포하거나 장애가 생겼을 때 시스템이 어떻게 움직이는지 확인했습니다. 예상과 다르게 나온 결과도 있었고, 단순히 성공이나 실패만 기록하기보다는 왜 그런 결과가 나왔는지 살펴보려고 했습니다.
 
