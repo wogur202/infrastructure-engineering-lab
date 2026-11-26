@@ -39,21 +39,34 @@ Patch 수락부터 최초 Blue 200 관측까지는 약 20.10초였습니다. 콘
 
 ## 첫 시도에서 놓친 것
 
-첫 시도는 Green RollingUpdate 직후 `len(pods)==2` 검사에서 멈췄습니다. 라벨로 조회하면 종료 중인 이전 Pod까지 잡혔기 때문입니다. 외부 503과 Target Health를 함께 확인하기 전이어서 완료로 기록하지 않았고, 안전 복구 로직으로 Blue 100과 Green 정상 설정을 복원했습니다. ([오류](evidence/03-failure-rollback/first-attempt-error.json), [타임라인](evidence/03-failure-rollback/first-attempt-timeline.json))
+첫 시도는 Green RollingUpdate 직후 `len(pods)==2` 검사에서 멈췄습니다. 라벨로 조회하면 종료 중인 이전 Pod까지 잡혔기 때문입니다.
 
-재실험에서는 Deployment revision과 OwnerReference UID로 현재 ReplicaSet을 찾고, `deletionTimestamp`가 없는 활성 Pod만 세었습니다. 그 Pod의 Ready와 이미지 Digest, Deployment의 Replicas와 `observedGeneration`, 활성 Pod IP와 EndpointSlice IP를 대조했습니다. 안정화 대기는 최대 120초로 두고 명백한 실패는 바로 중단하게 했습니다. 이 보완은 실행용 임시 스크립트에만 적용했고, 저장소의 앱·Manifest·CI/CD에는 들어가 있지 않습니다. 첫 시도에서 쓴 안전 복구 로직과 최종 실험의 수동 Rollback은 별개입니다.
+외부 503과 Target Health를 함께 확인하기 전이어서 완료로 기록하지 않았고, 안전 복구 로직으로 Blue 100과 Green 정상 설정을 복원했습니다. ([오류](evidence/03-failure-rollback/first-attempt-error.json), [타임라인](evidence/03-failure-rollback/first-attempt-timeline.json))
+
+재실험에서는 종료 중인 Pod를 빼고 현재 ReplicaSet의 활성 Pod만 셌습니다.
+
+- 현재 ReplicaSet은 Deployment revision과 OwnerReference UID로 찾고, `deletionTimestamp`가 없는 Pod만 셌습니다.
+- 그 Pod의 Ready와 이미지 Digest, Deployment의 Replicas와 `observedGeneration`을 확인했습니다.
+- 활성 Pod IP와 EndpointSlice IP를 대조했습니다.
+
+안정화 대기는 최대 120초로 두고, 명백한 실패는 바로 중단하게 했습니다. 이 보완은 실행용 임시 스크립트에만 적용했고, 저장소의 앱·Manifest·CI/CD에는 들어가 있지 않습니다. 첫 시도에서 쓴 안전 복구 로직과 최종 실험의 수동 Rollback은 별개입니다.
 
 ## 남은 한계
 
-Pod Ready, ALB Target Healthy, 실제 사용자 응답은 서로 다른 관측이었고, `/healthz`만 봤다면 이번 업무 API 장애는 놓쳤을 것입니다. 배포 뒤에는 업무 경로 Smoke Test가 필요하고, 복구도 설정을 바꾸는 데서 끝내지 않고 실제 응답까지 봐야 합니다.
+Pod Ready, ALB Target Healthy, 실제 사용자 응답은 서로 다른 관측이었습니다. `/healthz`만 봤다면 이번 업무 API 장애는 놓쳤을 것입니다.
 
-실험 범위는 좁습니다. 같은 이미지 Digest의 슬롯 전환이라 서로 다른 앱 버전 사이의 Rollback은 검증하지 않았고, 요청을 순차로 보냈기 때문에 지속 부하, 동시 요청, 장기 안정성, 무중단은 확인하지 못했습니다. [05](../05-graceful-shutdown/README.md)의 SIGTERM·Drain 검증은 이번 앱에 적용하거나 반복하지 않았고, [02](../02-linux-oom-cgroup/README.md)의 OOM도 장애 원인으로 쓰지 않았습니다.
+그래서 배포 뒤에는 업무 경로 Smoke Test가 필요하고, 복구도 설정을 바꾸는 데서 끝내지 않고 실제 응답까지 봐야 합니다.
 
-증빙의 성격도 구분해야 합니다. ALB Target Health와 Rule은 관리자 AWS 콘솔에서 직접 봤고, 제출한 파일은 그 관측 기록입니다. `describe-target-health` API 원본이나 화면 캡처가 아니고, CLI 조회 권한은 넓히지 않았습니다.
+이번 결과를 읽을 때 주의할 점은 다음과 같습니다.
 
-자동화 범위는 CI와 ECR 게시까지입니다. 여기에는 독립된 배포 승인자 보호가 없고, CD와 Rollback은 수동입니다. [06](../06-aws-eks-infrastructure/README.md)의 인프라 코드를 다시 써서 새 ALB가 만들어졌고, 이전 실험의 ALB를 재사용하지 않았습니다.
-
-실험과 증빙을 정리하던 2026-11-22에는 EKS, 노드, NAT, ALB가 실행 중이었습니다. 이후 삭제했다는 뜻이 아니고, 현재 리소스와 비용 정리 여부는 따로 확인해야 합니다. 당시 ECR 이미지와 GitHub 게시 인증은 남겨 두었습니다.
+| 구분 | 주의할 점 |
+|---|---|
+| 비교 대상 | 같은 이미지 Digest의 슬롯 전환입니다. 서로 다른 앱 버전 사이의 Rollback은 검증하지 않았습니다. |
+| 부하 | 요청을 순차로 보냈습니다. 지속 부하, 동시 요청, 장기 안정성, 무중단은 확인하지 못했습니다. |
+| 증빙 | ALB Target Health와 Rule은 관리자 콘솔에서 직접 본 관측 기록입니다. `describe-target-health` API 원본이나 화면 캡처가 아니고, CLI 조회 권한은 넓히지 않았습니다. |
+| 자동화 | 자동화는 CI와 ECR 게시까지입니다. 독립된 배포 승인자 보호가 없고, CD와 Rollback은 수동입니다. |
+| 다른 실험 | [05](../05-graceful-shutdown/README.md)의 SIGTERM·Drain 검증은 이번 앱에 적용하지 않았고, [02](../02-linux-oom-cgroup/README.md)의 OOM도 장애 원인으로 쓰지 않았습니다. [06](../06-aws-eks-infrastructure/README.md)의 인프라 코드를 다시 써서 새 ALB가 만들어졌습니다. |
+| 리소스 | 실험과 증빙을 정리하던 2026-11-22에는 EKS, 노드, NAT, ALB가 실행 중이었습니다. 이후 삭제했다는 뜻이 아니고, 현재 리소스와 비용 정리 여부는 따로 확인해야 합니다. 당시 ECR 이미지와 GitHub 게시 인증은 남겨 두었습니다. |
 
 ## 증빙
 
