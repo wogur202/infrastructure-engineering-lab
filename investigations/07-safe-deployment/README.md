@@ -2,11 +2,9 @@
 
 <sub>GitHub Actions · ECR · EKS · ALB Weighted Forward · 2026-11-22</sub>
 
-Blue/Green 중 Green으로 트래픽을 넘긴 뒤 업무 API에만 장애를 주입했습니다. `/healthz`와 `/readyz`는 200이고 ALB Target도 Healthy였지만 `/api/info`는 503이었습니다. 여기서 Ingress의 가중치를 손으로 Blue에 되돌리고, 외부 업무 API가 다시 정상 응답하는 것까지 확인했습니다.
+Blue/Green 중 Green으로 트래픽을 넘긴 뒤 업무 API에만 장애를 주입했습니다. `/healthz`와 `/readyz`는 200이고 ALB Target도 Healthy였지만 `/api/info`는 503이었습니다. 여기서 Ingress의 가중치를 수동으로 Blue에 되돌리고, 외부 업무 API가 다시 정상 응답하는 것까지 확인했습니다.
 
-06에서 만든 Terraform 기반 EKS 구성을 다시 만들고, GitHub Actions가 ECR에 올린 이미지를 Blue와 Green 두 슬롯에 배치했습니다. 두 슬롯은 같은 이미지 Digest를 쓰고, 응답의 버전과 슬롯만 환경변수로 구분했습니다. 서로 다른 앱 버전 사이의 Rollback 실험은 아닙니다.
-
-자동화는 CI와 OIDC 기반 ECR 게시까지입니다. EKS 배포, 트래픽 전환, 복구는 제 Mac에서 수동으로 했고, 자동 CD나 자동 Rollback은 아닙니다. 파이프라인 흐름은 [CI-CD.md](CI-CD.md)에 있습니다.
+06에서 만든 Terraform 기반 EKS 구성을 다시 만들고, GitHub Actions가 ECR에 올린 이미지를 Blue와 Green 두 슬롯에 배치했습니다. 자동화는 CI와 OIDC 기반 ECR 게시까지이고, EKS 배포와 트래픽 전환, 복구는 제 Mac에서 수동으로 했습니다. 파이프라인 흐름은 [CI-CD.md](CI-CD.md)에 있습니다.
 
 ![Green 장애 주입 후에는 Pod Ready와 ALB Healthy, 헬스 경로가 정상인데 업무 API만 503이고, 가중치를 Blue로 되돌리면 업무 API가 200으로 돌아오는 비교](images/healthy-but-503.png)
 
@@ -14,13 +12,17 @@ Blue/Green 중 Green으로 트래픽을 넘긴 뒤 업무 API에만 장애를 �
 
 `GitHub Actions → OIDC → ECR → 수동 배포 → EKS Blue/Green → ALB Weighted Forward` 순서입니다. 06의 Terraform 코드로 VPC, NAT, EKS, 노드 2대를 다시 만들고 AWS Load Balancer Controller 3.6.3을 설치했습니다. Controller와 앱은 각각 Pod 2개입니다.
 
-처음에는 Blue 100 / Green 0에서 두 슬롯 모두 Target이 Healthy 2/2였습니다. Ingress의 가중치 두 값만 바꿔 Green 100 / Blue 0으로 넘겼고, Kubernetes에 적은 설정과 AWS 콘솔의 실제 Listener Rule을 따로 확인했습니다. 업무 API 요청은 [Blue](evidence/02-blue-green/normal-blue-http.json)와 [Green](evidence/02-blue-green/normal-green-http.json) 각각 21회(최초 1회 + 추가 20회) 모두 200이었고, [재실험 전 Green 기준선](evidence/02-blue-green/retry-green-baseline.json)도 11회 모두 Green 200이었습니다.
+처음에는 Blue 100 / Green 0이었고 두 슬롯 모두 Target이 Healthy 2/2였습니다.
 
-두 슬롯은 같은 이미지 Digest를 쓰고, 응답의 `version`은 환경변수로 `17ea0b4-blue`, `17ea0b4-green`을 줬습니다. 서로 다른 이미지 버전을 배포한 것으로 읽으면 안 됩니다.
+Ingress의 가중치 두 값만 바꿔 Green 100 / Blue 0으로 넘겼고, Kubernetes에 적은 설정과 AWS 콘솔의 실제 Listener Rule을 따로 확인했습니다. 업무 API 요청은 [Blue](evidence/02-blue-green/normal-blue-http.json)와 [Green](evidence/02-blue-green/normal-green-http.json) 각각 21회(최초 1회 + 추가 20회) 모두 200이었고, [재실험 전 Green 기준선](evidence/02-blue-green/retry-green-baseline.json)도 11회 모두 Green 200이었습니다.
+
+두 슬롯은 같은 이미지 Digest를 쓰고, 응답의 `version`은 환경변수로 `17ea0b4-blue`, `17ea0b4-green`을 줬습니다. 그래서 이 실험은 슬롯 전환이고, 서로 다른 앱 버전 사이의 Rollback은 아닙니다.
 
 ## 장애를 주입하고 되돌리기
 
 Green Deployment의 `INJECT_API_FAILURE`를 0에서 1로 바꿨습니다. 헬스 경로는 그대로 200이라 Pod는 Ready, ALB는 Healthy를 유지했고 업무 요청만 실패했습니다. 외부 503을 확인한 직후 Ingress 가중치만 Blue로 되돌렸고, 정상 응답을 확인한 뒤 Green 환경변수를 원복했습니다. Blue Deployment와 이미지는 건드리지 않았습니다.
+
+가장 먼저 볼 것은 세 가지입니다. Green의 헬스 경로는 200이었고, Green의 업무 API는 11회 모두 503이었고, Blue로 되돌린 뒤 업무 API는 21회 모두 200이었습니다.
 
 | 관측 지점 | 결과 | 증빙 |
 |---|---|---|
@@ -39,15 +41,17 @@ Patch 수락부터 최초 Blue 200 관측까지는 약 20.10초였습니다. 콘
 
 첫 시도는 Green RollingUpdate 직후 `len(pods)==2` 검사에서 멈췄습니다. 라벨로 조회하면 종료 중인 이전 Pod까지 잡혔기 때문입니다. 외부 503과 Target Health를 함께 확인하기 전이어서 완료로 기록하지 않았고, 안전 복구 로직으로 Blue 100과 Green 정상 설정을 복원했습니다. ([오류](evidence/03-failure-rollback/first-attempt-error.json), [타임라인](evidence/03-failure-rollback/first-attempt-timeline.json))
 
-재실험에서는 Deployment revision과 OwnerReference UID로 현재 ReplicaSet을 찾고, `deletionTimestamp`가 없는 활성 Pod만 세었습니다. 그 Pod의 Ready와 이미지 Digest, Deployment의 Replicas와 `observedGeneration`, 활성 Pod IP와 EndpointSlice IP를 대조했습니다. 안정화 대기는 최대 120초로 두고 명백한 실패는 바로 중단하게 했습니다. 이 보완은 실행용 임시 스크립트에만 적용했고 저장소의 앱과 Manifest는 바꾸지 않았습니다.
+재실험에서는 Deployment revision과 OwnerReference UID로 현재 ReplicaSet을 찾고, `deletionTimestamp`가 없는 활성 Pod만 세었습니다. 그 Pod의 Ready와 이미지 Digest, Deployment의 Replicas와 `observedGeneration`, 활성 Pod IP와 EndpointSlice IP를 대조했습니다. 안정화 대기는 최대 120초로 두고 명백한 실패는 바로 중단하게 했습니다. 이 보완은 실행용 임시 스크립트에만 적용했고, 저장소의 앱·Manifest·CI/CD에는 들어가 있지 않습니다. 첫 시도에서 쓴 안전 복구 로직과 최종 실험의 수동 Rollback은 별개입니다.
 
 ## 남은 한계
 
 Pod Ready, ALB Target Healthy, 실제 사용자 응답은 서로 다른 관측이었고, `/healthz`만 봤다면 이번 업무 API 장애는 놓쳤을 것입니다. 배포 뒤에는 업무 경로 Smoke Test가 필요하고, 복구도 설정을 바꾸는 데서 끝내지 않고 실제 응답까지 봐야 합니다.
 
-이 실험은 같은 이미지 Digest의 슬롯 전환이라, 서로 다른 앱 버전 사이의 Rollback은 검증하지 않았습니다. 요청은 순차로 보냈기 때문에 지속 부하, 동시 요청, 장기 안정성, 무중단은 확인하지 못했습니다. ALB Target Health와 Rule은 관리자 AWS 콘솔에서 직접 봤고, 제출한 파일은 그 관측 기록입니다. `describe-target-health` API 원본이나 화면 캡처가 아니고, CLI 조회 권한은 넓히지 않았습니다.
+실험 범위는 좁습니다. 같은 이미지 Digest의 슬롯 전환이라 서로 다른 앱 버전 사이의 Rollback은 검증하지 않았고, 요청을 순차로 보냈기 때문에 지속 부하, 동시 요청, 장기 안정성, 무중단은 확인하지 못했습니다. [05](../05-graceful-shutdown/README.md)의 SIGTERM·Drain 검증은 이번 앱에 적용하거나 반복하지 않았고, [02](../02-linux-oom-cgroup/README.md)의 OOM도 장애 원인으로 쓰지 않았습니다.
 
-CI와 ECR 게시에는 독립된 배포 승인자 보호가 없고, CD와 Rollback은 수동입니다. [06](../06-aws-eks-infrastructure/README.md)의 인프라 코드를 다시 써서 새 ALB가 만들어졌고, 이전 실험의 ALB를 재사용하지 않았습니다. [05](../05-graceful-shutdown/README.md)의 SIGTERM·Drain 검증은 이번 앱에 적용하거나 반복하지 않았고, [02](../02-linux-oom-cgroup/README.md)의 OOM도 장애 원인으로 쓰지 않았습니다.
+증빙의 성격도 구분해야 합니다. ALB Target Health와 Rule은 관리자 AWS 콘솔에서 직접 봤고, 제출한 파일은 그 관측 기록입니다. `describe-target-health` API 원본이나 화면 캡처가 아니고, CLI 조회 권한은 넓히지 않았습니다.
+
+자동화 범위는 CI와 ECR 게시까지입니다. 여기에는 독립된 배포 승인자 보호가 없고, CD와 Rollback은 수동입니다. [06](../06-aws-eks-infrastructure/README.md)의 인프라 코드를 다시 써서 새 ALB가 만들어졌고, 이전 실험의 ALB를 재사용하지 않았습니다.
 
 실험과 증빙을 정리하던 2026-11-22에는 EKS, 노드, NAT, ALB가 실행 중이었습니다. 이후 삭제했다는 뜻이 아니고, 현재 리소스와 비용 정리 여부는 따로 확인해야 합니다. 당시 ECR 이미지와 GitHub 게시 인증은 남겨 두었습니다.
 
