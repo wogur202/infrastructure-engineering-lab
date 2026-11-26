@@ -1,10 +1,10 @@
-# 콘솔에서 추가한 보안 그룹 규칙을 terraform plan이 찾아냈습니다
+# 콘솔에서 추가한 규칙을 terraform plan이 찾아냈다
 
 <sub>Terraform · AWS Security Group · Configuration Drift · 서울 리전(`ap-northeast-2`)</sub>
 
 Terraform으로 만든 보안 그룹에 AWS 콘솔에서 인바운드 규칙을 직접 추가했습니다. 코드는 건드리지 않았습니다. 이런 변경이 다음 `terraform plan`에 어떻게 나타나는지, 복구하면 어디까지 바뀌는지를 확인했습니다.
 
-## 코드는 그대로인데 AWS에만 규칙이 생겼습니다
+## 코드엔 없고 AWS에만 있는 규칙
 
 보안 그룹은 인바운드 규칙이 없는 상태(`ingress = []`)로 만들었고, 이때의 `terraform plan`은 [변경 사항이 없다고 나왔습니다](evidence/01-baseline/baseline-plan.txt).
 
@@ -20,7 +20,7 @@ Terraform으로 만든 보안 그룹에 AWS 콘솔에서 인바운드 규칙을 
 
 ![변경 후 보안 그룹 인바운드 규칙 화면: TCP 8080 규칙 1개](evidence/02-drift/sg-after-drift.png)
 
-## plan은 규칙을 지우는 쪽으로 계획을 세웠습니다
+## plan이 제안한 변경
 
 이 상태에서 `terraform plan`을 실행했습니다.
 
@@ -45,13 +45,13 @@ Plan: 0 to add, 1 to change, 0 to destroy.
 
 다만 이 단계의 plan은 무엇을 할지 보여 줄 뿐, AWS 설정을 바꾸지는 않습니다. 찾아낸 것과 되돌린 것은 다른 단계입니다.
 
-## 되돌리기 전에 먼저 생각할 것
+## 바로 되돌려도 될까
 
 이번 규칙은 제가 실험하려고 직접 추가한 것이라 지워도 문제가 없었습니다.
 
 운영 환경이라면 이야기가 다릅니다. 장애 대응 중에 임시로 열어 둔 규칙일 수도 있어서, plan 결과만 보고 바로 지우면 다른 문제가 생길 수 있습니다. 그렇다고 수동 변경을 무조건 코드에 옮길 수도 없습니다. 왜 바뀌었는지부터 확인하고, 유지할지 되돌릴지를 정해야 합니다.
 
-## 복구하고 나서 차이가 남아 있는지 확인했습니다
+## 복구와 재확인
 
 여기서는 유지할 이유가 없는 규칙이라 되돌리기로 했습니다. 먼저 [plan을 다시 확인](evidence/04-recovery/recovery-plan.txt)했고, 앞서와 같이 TCP 8080 규칙 하나를 제거하는 내용이었습니다. 그다음 `terraform apply`를 실행했습니다.
 

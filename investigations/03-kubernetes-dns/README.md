@@ -4,7 +4,7 @@
 
 Service 이름은 IP로 해석됐는데, 같은 이름으로 보낸 HTTP 요청은 `Connection refused`로 끝났습니다. `dns-lab`에서 Service selector를 일부러 잘못 설정해 만든 상황으로, 실제 장애가 아니라 직접 주입한 오류입니다.
 
-## 바꾼 것은 DNS가 아니라 selector 하나였습니다
+## 바꾼 것은 selector 하나
 
 Nginx Pod의 라벨은 `app=web-test`입니다. Service selector를 `app=nonexistent`로 바꾸자 이름은 계속 해석됐지만 연결할 대상이 사라졌고, 원래대로 되돌리자 같은 이름으로 다시 HTTP 200이 나왔습니다. DNS 설정과 Nginx Pod는 건드리지 않았습니다.
 
