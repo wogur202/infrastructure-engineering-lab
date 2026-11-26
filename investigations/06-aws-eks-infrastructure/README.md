@@ -4,7 +4,9 @@
 
 Terraform으로 서울 리전에 네트워크와 EKS를 만들고, Private Subnet에 둔 Python API를 ALB에 연결했습니다. 그 위에서 실제 Pod 하나를 지우고, 외부 HTTP 응답이 어떻게 나오는지 지켜봤습니다.
 
-확인은 한 곳만 보지 않고 Terraform State, AWS 리소스, Kubernetes 상태, 외부 HTTP 응답을 각각 따로 했습니다. 한 도구에서 정상이라고 나와도 서비스 전체가 정상이라는 뜻은 아니었기 때문입니다. 구축에서 오래 걸린 쪽은 매니페스트가 아니라 AWS 권한과 부분 배포 상태였습니다. 그래서 Pod 삭제 결과를 먼저 적고, 그 뒤에 막혔던 과정을 적었습니다.
+확인은 한 곳만 보지 않고 Terraform State, AWS 리소스, Kubernetes 상태, 외부 HTTP 응답을 각각 따로 했습니다. 한 도구에서 정상이라고 나와도 서비스 전체가 정상이라는 뜻은 아니었기 때문입니다.
+
+구축 과정에서는 AWS 권한 오류로 Terraform 적용이 여러 차례 멈췄습니다. 일부 리소스가 이미 생성된 상태여서, AWS 실제 상태와 Terraform State를 대조한 뒤 다음 변경을 결정했습니다.
 
 ## 만든 구성
 
@@ -24,14 +26,21 @@ flowchart TB
             end
 
             subgraph EKS["EKS · aegis-eks"]
-                SVC["Kubernetes Service<br/>ClusterIP :8080"]
+                SVC["Kubernetes Service / EndpointSlice<br/>ClusterIP :8080"]
+                CTRL["AWS Load Balancer Controller"]
 
                 subgraph AZA["AZ-a · Private 10.20.11.0/24"]
-                    PODA["Python API Pod A<br/>:8080"]
+                    subgraph NODEA["Worker Node"]
+                        KA["kubelet"]
+                        PODA["Python API Pod A<br/>:8080"]
+                    end
                 end
 
                 subgraph AZC["AZ-c · Private 10.20.12.0/24"]
-                    PODB["Python API Pod B<br/>:8080"]
+                    subgraph NODEC["Worker Node"]
+                        KC["kubelet"]
+                        PODB["Python API Pod B<br/>:8080"]
+                    end
                 end
             end
         end
@@ -39,15 +48,15 @@ flowchart TB
 
     USER -->|"HTTP · allowed IPv4 /32"| IGW
     IGW --> ALB
-    ALB -->|"IP targets · :8080"| PODA
-    ALB -->|"IP targets · :8080"| PODB
+    ALB ==>|"HTTP · IP Target (Pod IP :8080)"| PODA
+    ALB ==>|"HTTP · IP Target (Pod IP :8080)"| PODB
 
-    SVC -.-> PODA
-    SVC -.-> PODB
-    KUBELET["Worker Node kubelet<br/>ECR image pull"]
-    KUBELET -.->|"Pull image"| ECR
-    PODA -.->|"Outbound"| NAT
-    PODB -.->|"Cross-AZ outbound"| NAT
+    SVC -.->|"대상 Pod 정보"| CTRL
+    CTRL -.->|"Target 등록"| ALB
+    KA -.->|"image pull"| ECR
+    KC -.->|"image pull"| ECR
+    PODA -.->|"outbound"| NAT
+    PODB -.->|"cross-AZ outbound"| NAT
     NAT --> IGW
 
     classDef frontend fill:#eaf2fc,stroke:#4778ac,color:#243b56
@@ -55,12 +64,16 @@ flowchart TB
     classDef network fill:#f5f1e9,stroke:#a58c62,color:#55462b
 
     class USER,ALB frontend
-    class PODA,PODB,SVC workload
+    class PODA,PODB,SVC,CTRL workload
     class IGW,NAT,ECR network
 ```
 
+굵은 실선이 실제 HTTP 요청 경로이고, 점선은 대상 등록·이미지 pull·outbound 같은 제어와 부가 경로입니다. ALB는 Service를 거치지 않고 Pod IP로 바로 전달하며, Service/EndpointSlice의 정보를 Controller가 읽어 ALB의 Target을 등록합니다.
 
-VPC `10.20.0.0/16`에 Public·Private 서브넷을 두 AZ에 나눠 만들었고, EKS(`aegis-eks`, Kubernetes 1.36)의 Worker Node 2개는 서로 다른 AZ의 Private 서브넷에 있습니다. API는 Deployment 2 Replicas이고, Internet-facing ALB가 IP Target으로 Pod에 직접 연결합니다. NAT Gateway는 실습 비용 때문에 하나만 두었습니다. 구성 전체는 맨 아래 '구성 상세'에 접어 두었고, 다이어그램 원본은 [`architecture.mmd`](diagrams/architecture.mmd)입니다.
+
+VPC `10.20.0.0/16`에 Public·Private 서브넷을 두 AZ에 나눠 만들었고, EKS(`aegis-eks`, Kubernetes 1.36)의 Worker Node 2개는 서로 다른 AZ의 Private 서브넷에 있습니다. API는 Deployment 2 Replicas이고, Internet-facing ALB가 IP Target으로 Pod에 직접 연결합니다. 구성 전체는 맨 아래 '구성 상세'에 접어 두었고, 다이어그램 원본은 [`architecture.mmd`](diagrams/architecture.mmd)입니다.
+
+실습 비용을 줄이기 위해 NAT Gateway는 한 AZ에만 배치했습니다. 대신 다른 AZ의 Private Subnet도 이 NAT를 사용하므로, AZ 장애에 취약하고 AZ 간 데이터 전송 비용이 발생할 수 있습니다.
 
 ## Pod 하나를 지웠을 때
 
@@ -77,7 +90,7 @@ VPC `10.20.0.0/16`에 Public·Private 서브넷을 두 AZ에 나눠 만들었고
 
 90건 모두 HTTP 200이었습니다. 삭제 요청(00:42:05) 뒤에도 00:42:07까지는 삭제된 Pod가 응답했고, 00:42:08~11에는 유지된 Pod만 응답했습니다. 새 Pod가 외부 요청에 처음 응답한 것은 00:42:12로, 삭제 요청에서 약 7초 뒤입니다. 이 7초는 Pod가 Ready가 된 시간이나 ALB에서 Healthy로 바뀐 시간과는 다른 값입니다.
 
-삭제 뒤 AWS Target Group에는 유지된 Pod와 새 Pod가 Healthy로, 삭제된 Pod가 Draining으로 보였습니다. 등록이 해제되는 동안에도 정상 대상이 둘 있었다는 뜻입니다.
+삭제 후 확인한 Target Group 화면에는 Healthy 대상 2개와 Draining 대상 1개가 표시됐습니다.
 
 ![삭제 후 Target Group 화면: 대상 3개 중 정상 2, 드레이닝 1](evidence/recovery/target-transition.png)
 
@@ -91,12 +104,12 @@ VPC `10.20.0.0/16`에 Public·Private 서브넷을 두 AZ에 나눠 만들었고
 
 첫 네트워크 배포는 EIP를 할당한 뒤 `ec2:DescribeAddressesAttribute` 권한 오류로 멈췄습니다. `DescribeAddresses`와는 별개의 권한입니다. VPC와 서브넷은 이미 만들어진 상태라 처음부터 다시 실행하면 안 되는 상황이었습니다.
 
-1. 오류 메시지에서 부족한 API를 확인하고 기존 네트워크 정책에 조회 권한을 추가했습니다.
-2. `terraform state list`와 AWS의 EIP 조회를 대조했습니다. EIP는 State에도 AWS에도 있었습니다. 속성 조회 API는 종료 코드 0으로 바뀌었지만 `Addresses: []`를 돌려줘서, 속성 데이터가 확인됐다고는 적지 않았습니다.
-3. 새 Plan에서 EIP가 `tainted`로 표시되고 `3 to add, 0 to change, 1 to destroy`가 나왔습니다. 이 계획은 적용하지 않았습니다.
-4. State를 로컬 파일로 백업한 뒤 `terraform untaint aws_eip.nat`으로 교체 표시를 풀었습니다. 실제 EIP를 지우거나 State를 직접 고치지는 않았습니다.
-5. 새 Plan에서 NAT Gateway와 Private 경로만 만드는 `2 to add, 0 to change, 0 to destroy`를 확인했습니다.
-6. 적용해서 `2 added, 0 changed, 0 destroyed`를 확인했고, 이후 NAT `available`, EIP 연결, `No changes`를 검증했습니다.
+오류 메시지에 나온 API의 조회 권한을 기존 네트워크 정책에 추가한 뒤, 무엇을 할지 정하기 전에 먼저 상태를 대조했습니다.
+
+- `terraform state list`와 AWS의 EIP 조회: EIP는 State와 AWS 양쪽에 있었습니다. 속성 조회 API는 종료 코드 0으로 바뀌었지만 `Addresses: []`를 돌려줘서, 속성 데이터가 확인됐다고는 적지 않았습니다.
+- 새 Plan: EIP가 `tainted`로 표시되고 `3 to add, 0 to change, 1 to destroy`가 나왔습니다. 이 계획은 적용하지 않았습니다.
+
+복구는 그다음입니다. AWS와 State 양쪽에서 EIP가 있는 것을 확인한 뒤, State를 로컬 파일로 백업하고 `terraform untaint aws_eip.nat`으로 교체 표시를 풀었습니다. 새 Plan에서 NAT Gateway와 Private 경로만 만드는 `2 to add, 0 to change, 0 to destroy`를 확인하고 적용했고, 결과는 `2 added, 0 changed, 0 destroyed`였습니다. 이후 NAT `available`, EIP 연결, `No changes`까지 검증했습니다. 실제 EIP를 지우거나 State를 직접 고치지는 않았습니다.
 
 `untaint`는 실패 이력만 보고 늘 쓰는 해결책이 아닙니다. 이번에는 실제 EIP가 있고 조회 권한이 복구된 것을 먼저 확인한 뒤에 썼습니다. 실패 당시의 터미널 전체 로그는 원본으로 남기지 않았고, 재구성한 로그를 원본처럼 만들지도 않았습니다.
 
@@ -120,13 +133,11 @@ AWS Load Balancer Controller의 IAM Policy와 Role을 만들다가도 조회 권
 
 이 결과로 운영 환경의 무중단이나 고가용성을 말할 수는 없습니다.
 
-NAT Gateway는 한 AZ에만 있습니다. 그 AZ에 장애가 나면 다른 AZ의 Private 서브넷도 외부 통신에 영향을 받을 수 있고, AZ를 건너는 NAT 통신에는 데이터 전송 비용도 붙습니다. Worker는 두 AZ에 나눴지만 NAT 구성은 고가용성으로 검증하지 않았습니다.
+NAT Gateway가 한 AZ에만 있어서, Worker를 두 AZ에 나눴어도 NAT나 그 AZ의 장애까지 견디는 구조는 검증하지 않았습니다. 장애 실험도 Pod 하나를 지운 것이 전부입니다. 노드, AZ, NAT 장애나 높은 부하는 시험하지 않았고, 약 1초 간격으로 90건이 성공했다는 것도 이 실험에서 관측한 값입니다.
 
-장애 실험은 Pod 하나를 지운 것이 전부입니다. 노드, AZ, NAT 장애나 높은 부하는 시험하지 않았고, 약 1초 간격으로 90건이 성공했다는 것도 이 실험에서 관측한 값입니다. `/readyz`는 외부 의존성을 검사하지 않는 단순 응답이고, ALB는 HTTP만 씁니다. 실제 서비스라면 HTTPS와 인증서, 접근 통제가 더 필요합니다.
+ALB는 HTTP만 씁니다. 실제 서비스라면 HTTPS와 인증서, 접근 통제가 더 필요합니다. 권한도 최소 권한을 완성했다고 말하기 어렵습니다. EC2/EKS 관리 정책에 서울 리전 조건은 있지만 일부 작업의 리소스 범위는 `*`이고, VPC CNI 정책은 초기 구성을 단순하게 하려고 Node Role에 붙였습니다.
 
-권한은 최소 권한을 완성했다고 말하기 어렵습니다. EC2/EKS 관리 정책에 서울 리전 조건은 있지만 일부 작업의 리소스 범위는 `*`이고, VPC CNI 정책은 초기 구성을 단순하게 하려고 Node Role에 붙였습니다.
-
-Terraform은 VPC·EKS·IAM·ECR 등을 관리하고 ALB와 Target Group은 Kubernetes Controller가 관리합니다. 그래서 Terraform의 `No changes`가 Controller가 만든 리소스의 정상 상태까지 보장하지는 않습니다. 비용은 EKS Control Plane, EC2 Worker, EBS, NAT, IPv4, ALB, ECR, 데이터 처리량에 따라 발생합니다. 처음 가정한 `t3.medium` 기준 비용은 최종 실측 비용으로 쓰지 않습니다.
+`/readyz` 범위, Controller가 만든 리소스와 Terraform State의 관계, 비용은 접어 둔 상세에 적었습니다.
 
 후속 기록인 [07 Blue/Green](../07-safe-deployment/README.md)은 이 인프라 코드를 재사용해 환경을 다시 만들고, 새 ALB에서 슬롯 전환을 관측했습니다. [08 CPU·HPA·OOM](../08-observability-scaling/README.md)은 기존 ECR을 참조하는 별도의 EKS·Terraform State 환경에서 자원과 확장 동작을 비교했습니다.
 
@@ -181,6 +192,12 @@ Terraform은 VPC·EKS·IAM·ECR 등을 관리하고 ALB와 Target Group은 Kuber
 | `aegis-eks-node-role` | `ec2.amazonaws.com` | `AmazonEKSWorkerNodePolicy`, `AmazonEC2ContainerRegistryPullOnly`, `AmazonEKS_CNI_Policy` |
 
 사용자 정책은 콘솔에서 준비했고, [iam.tf](terraform/iam.tf)가 관리하는 대상은 서비스 역할과 정책 연결입니다.
+
+### 그 밖에 알아 둘 것
+
+- `/readyz`는 외부 의존성을 검사하지 않는 단순 정상 응답입니다.
+- Terraform은 VPC·EKS·IAM·ECR 등을 관리하고, ALB와 Target Group은 Kubernetes Controller가 관리합니다. 그래서 Terraform의 `No changes`가 Controller가 만든 리소스의 정상 상태까지 보장하지는 않습니다.
+- 비용은 EKS Control Plane, EC2 Worker, EBS, NAT, IPv4, ALB, ECR, 데이터 처리량에 따라 발생합니다. 처음 가정한 `t3.medium` 기준 비용은 최종 실측 비용으로 쓰지 않았고, 실제 청구 금액을 확인한 자료는 없습니다.
 
 </details>
 

@@ -13,14 +13,21 @@ flowchart TB
             end
 
             subgraph EKS["EKS · aegis-eks"]
-                SVC["Kubernetes Service<br/>ClusterIP :8080"]
+                SVC["Kubernetes Service / EndpointSlice<br/>ClusterIP :8080"]
+                CTRL["AWS Load Balancer Controller"]
 
                 subgraph AZA["AZ-a · Private 10.20.11.0/24"]
-                    PODA["Python API Pod A<br/>:8080"]
+                    subgraph NODEA["Worker Node"]
+                        KA["kubelet"]
+                        PODA["Python API Pod A<br/>:8080"]
+                    end
                 end
 
                 subgraph AZC["AZ-c · Private 10.20.12.0/24"]
-                    PODB["Python API Pod B<br/>:8080"]
+                    subgraph NODEC["Worker Node"]
+                        KC["kubelet"]
+                        PODB["Python API Pod B<br/>:8080"]
+                    end
                 end
             end
         end
@@ -28,15 +35,15 @@ flowchart TB
 
     USER -->|"HTTP · allowed IPv4 /32"| IGW
     IGW --> ALB
-    ALB -->|"IP targets · :8080"| PODA
-    ALB -->|"IP targets · :8080"| PODB
+    ALB ==>|"HTTP · IP Target (Pod IP :8080)"| PODA
+    ALB ==>|"HTTP · IP Target (Pod IP :8080)"| PODB
 
-    SVC -.-> PODA
-    SVC -.-> PODB
-    KUBELET["Worker Node kubelet<br/>ECR image pull"]
-    KUBELET -.->|"Pull image"| ECR
-    PODA -.->|"Outbound"| NAT
-    PODB -.->|"Cross-AZ outbound"| NAT
+    SVC -.->|"대상 Pod 정보"| CTRL
+    CTRL -.->|"Target 등록"| ALB
+    KA -.->|"image pull"| ECR
+    KC -.->|"image pull"| ECR
+    PODA -.->|"outbound"| NAT
+    PODB -.->|"cross-AZ outbound"| NAT
     NAT --> IGW
 
     classDef frontend fill:#eaf2fc,stroke:#4778ac,color:#243b56
@@ -44,5 +51,5 @@ flowchart TB
     classDef network fill:#f5f1e9,stroke:#a58c62,color:#55462b
 
     class USER,ALB frontend
-    class PODA,PODB,SVC workload
+    class PODA,PODB,SVC,CTRL workload
     class IGW,NAT,ECR network
