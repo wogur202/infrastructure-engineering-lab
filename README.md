@@ -14,11 +14,15 @@ AWS에 서비스 환경을 직접 구축하면서 권한과 비용, 가용성을
 
 ### 권한이 없어 구축이 멈췄을 때
 
+<sub>Terraform · AWS IAM · iam:PassRole · EKS</sub>
+
 Terraform으로 VPC·EKS·IAM·ECR을 구성하다가 `ec2:DescribeAddressesAttribute` 권한이 없어 구축이 중간에 멈췄습니다. 이미 만들어진 리소스가 있어 처음부터 다시 실행할 수 없었고, 실제 AWS 상태와 Terraform State, 새 Plan을 차례로 대조한 뒤 복구했습니다. NAT Gateway는 실습 비용을 줄이려고 하나만 두었고, 그 대신 NAT가 있는 AZ에 장애가 나면 다른 AZ도 외부 통신이 끊기는 한계가 있습니다. 권한은 오류를 분석하며 범위를 나눴지만, 모두 최소 권한으로 완성한 것은 아닙니다.
 
 [EKS 구축·권한 문제 상세 기록](investigations/06-aws-eks-infrastructure/README.md)
 
 ### 정상이라고 나오는데 API는 실패했을 때
+
+<sub>AWS ALB · Blue/Green · Health Check · HTTP 503</sub>
 
 Blue에서 Green으로 트래픽을 전환한 뒤 업무 API에 장애를 일부러 주입했습니다. `/healthz`, `/readyz`와 ALB Target Health는 정상이었지만 외부의 `/api/info` 요청은 **11회 모두 HTTP 503**이었고, 가중치를 Blue로 되돌리자 **21회 모두 HTTP 200**을 확인했습니다. 두 슬롯은 같은 이미지를 사용했고 전환과 복귀는 수동이었습니다. 자동 배포나 롤백을 구현한 것은 아닙니다.
 
@@ -31,6 +35,8 @@ API Pod 두 개 가운데 하나를 삭제하고 약 1초 간격으로 외부 �
 [Pod 교체 중 요청 흐름 상세 기록](investigations/06-aws-eks-infrastructure/README.md)
 
 ### 한도를 걸고 부하를 줬을 때
+
+<sub>Prometheus · Grafana · k6 · CPU Throttling · HPA</sub>
 
 CPU 제한을 바꿔 가며 지연을 비교하고 HPA를 켜고 꺼 가며 확장 동작을 봤습니다. HPA는 **1→2→1 Pod**로 늘고 줄었지만 Pod 하나로도 30 RPS를 처리해서, 응답 지연이나 처리량이 좋아졌다고는 말할 수 없었습니다. 메모리 한도는 독립 Job으로 비교했고, 128Mi에서는 OOMKilled, 256Mi에서는 정상 종료됐습니다.
 
