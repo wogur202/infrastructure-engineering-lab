@@ -2,12 +2,6 @@ __pycache__/
 *.pyc
 *.pid
 .DS_Store
-evidence/server.log
-evidence/server-backlog128.log
-evidence/server.log
-evidence/server-backlog128.log
-evidence/server.log
-evidence/server-backlog128.log
 
 **/evidence/server.log
 **/evidence/server-backlog128.log

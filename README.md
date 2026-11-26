@@ -1,6 +1,6 @@
 <!-- 메인 README: 전체 포트폴리오 소개 / 개별 실험 그래프와 증빙은 각 상세 문서에서 제공 -->
 
-![AWS 기반 인프라 운영과 장애 대응 실험 기록. Project Aegis의 AWS EKS 구축·Blue/Green 배포·확장 관측과 Engineering Lab의 TCP·OOM·Kubernetes Service·Terraform Drift·종료 처리 실험을 소개하는 전체 구성도](assets/infrastructure-portfolio-overview.png)
+![AWS 기반 인프라 운영과 장애 대응 실험 기록. Project Aegis의 AWS EKS 구축·Blue/Green 배포·확장 관측과 Engineering Lab의 TCP·OOM·Kubernetes Service·Terraform Drift·종료 처리 실험을 소개하는 전체 구성도](images/infrastructure-portfolio-overview.png)
 
 AWS에 서비스 환경을 직접 구축하고, 배포하거나 장애가 생겼을 때 시스템이 어떻게 움직이는지 확인했습니다. 예상과 다르게 나온 결과도 있었고, 단순히 성공이나 실패만 기록하기보다는 왜 그런 결과가 나왔는지 살펴보려고 했습니다.
 
@@ -58,7 +58,7 @@ VM에는 여유 메모리가 남아 있었지만, 64MiB로 제한한 cgroup 안�
 
 Service 이름은 정상적으로 IP로 해석됐는데 HTTP 연결은 실패했습니다. DNS 자체가 아니라 Service selector가 Pod 라벨과 맞지 않아 EndpointSlice에 연결 대상이 없었던 상황으로, selector 복구 후 HTTP 200까지 확인했습니다.
 
-[Kubernetes Service 연결 상세 기록](investigations/03-kubernetes-dns/README.md)
+[Kubernetes Service 연결 상세 기록](investigations/03-kubernetes-service-selector/README.md)
 
 ### Terraform 설정 변경 감지
 
