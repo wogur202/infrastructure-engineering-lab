@@ -60,7 +60,7 @@ aws_security_group.drift_lab: Modifications complete after 1s
 Apply complete! Resources: 0 added, 1 changed, 0 destroyed.
 ```
 
-보안 그룹을 교체한 것이 아니라 규칙만 바꾼 것이라 ID는 그대로였습니다. 이어서 AWS API로 규칙을 다시 조회했더니, [TCP 8080 규칙은 없어졌습니다](evidence/04-recovery/aws-rules-after-recovery.json).
+보안 그룹을 새로 만드는 대신, 기존 보안 그룹의 인바운드 규칙을 수정했습니다. 처음 plan부터 [최종 plan](evidence/05-validation/final-plan.txt)까지 출력된 보안 그룹 ID(`sg-06bc…`)도 같았습니다. 이어서 AWS API로 규칙을 다시 조회했더니, [TCP 8080 규칙은 없어졌습니다](evidence/04-recovery/aws-rules-after-recovery.json).
 
 ```json
 {
@@ -76,7 +76,7 @@ No changes. Your infrastructure matches the configuration.
 
 ## 남은 한계
 
-Terraform은 차이를 찾고 되돌릴 수는 있지만, 변경 이유까지는 알려 주지 않습니다. 개발 환경에서는 허용 범위 안의 변경을 자동으로 복구하는 방식을, 운영 환경에서는 검토와 승인 뒤에 적용하는 방식을 생각해 볼 수 있습니다. 다만 둘 다 이번에는 해 보지 않았고, 확인한 범위는 수동 변경 탐지, 복구, 복구 후 재확인까지입니다.
+Terraform은 코드와 실제 인프라의 차이를 감지하고, 이를 해소할 변경 계획을 제시할 수 있습니다. 하지만 누가 왜 변경했는지까지는 알려 주지 않습니다. 실제 복구는 제가 `terraform apply`를 실행해서 이루어진 것입니다. 개발 환경에서는 허용 범위 안의 변경을 자동으로 복구하는 방식을, 운영 환경에서는 검토와 승인 뒤에 적용하는 방식을 생각해 볼 수 있습니다. 다만 둘 다 이번에는 해 보지 않았고, 확인한 범위는 수동 변경 탐지, 복구, 복구 후 재확인까지입니다.
 
 보안 그룹은 EC2 인스턴스에 연결하지 않아서 서비스 영향은 측정하지 않았습니다.
 
