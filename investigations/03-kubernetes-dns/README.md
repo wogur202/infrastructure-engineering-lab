@@ -26,7 +26,9 @@ Nginx Pod의 라벨은 `app=web-test`입니다. Service selector를 `app=nonexis
 
 ### 1. 정상 경로
 
-CoreDNS Deployment는 `2/2 Ready`였고, 테스트 Pod에서 `kubernetes.default.svc.cluster.local`을 조회하자 DNS 서버 `10.96.0.10`이 `10.96.0.1`로 해석했습니다. 이어 `web-test`(Nginx)와 `web-svc`를 만들고 Service 이름으로 요청하자 정상 응답이 왔습니다.
+먼저 DNS부터 확인했습니다. CoreDNS Deployment는 `2/2 Ready`였고, 테스트 Pod에서 `kubernetes.default.svc.cluster.local`을 조회하자 DNS 서버 `10.96.0.10`이 `10.96.0.1`로 해석했습니다.
+
+그다음 `web-test`(Nginx)와 `web-svc`를 만들고 Service 이름으로 요청하자 정상 응답이 왔습니다. 이 결과를 정상 기준으로 삼았습니다.
 
 ```text
 HTTP/1.1 200 OK
@@ -42,12 +44,16 @@ kubectl patch service web-svc -n dns-lab \
   -p '{"spec":{"selector":{"app":"nonexistent"}}}'
 ```
 
-EndpointSlice에서는 연결할 Pod가 사라졌고, 같은 Service 주소의 DNS 조회는 여전히 정상이었습니다.
+EndpointSlice에서는 연결할 Pod가 사라졌습니다.
 
 ```text
 NAME            ADDRESSTYPE   PORTS     ENDPOINTS
 web-svc-4kmtm   IPv4          <unset>   <unset>
+```
 
+그런데 같은 Service 이름의 DNS 조회는 여전히 정상이었습니다.
+
+```text
 Name:    web-svc.dns-lab.svc.cluster.local
 Address: 10.96.157.6
 ```
@@ -73,12 +79,19 @@ web-svc-4kmtm   IPv4          80      10.244.0.8
 
 ### 참고: DNS 자체가 실패하는 경우
 
-DNS 서버 주소를 일부러 `192.0.2.53`(문서·시험용 예약 주소)으로 지정하면 응답이 없었고, 정상 CoreDNS에 존재하지 않는 이름을 물으면 이름이 없다는 응답이 왔습니다. Timeout은 DNS 서버에서 응답이 오지 않은 경우이고, NXDOMAIN은 서버가 그 이름이 없다고 답한 경우입니다. Kubernetes의 DNS 장애를 발견한 게 아니라 실패 유형의 차이를 보려고 조건을 바꾼 테스트입니다.
+실패 유형의 차이를 보려고 조건을 일부러 바꿔 본 테스트입니다. Kubernetes의 DNS 장애를 발견한 것은 아닙니다.
 
-```text
-;; connection timed out; no servers could be reached
-** server can't find nonexistent-service.dns-lab.svc.cluster.local: NXDOMAIN
-```
+- Timeout: DNS 서버 주소를 `192.0.2.53`(문서·시험용 예약 주소)으로 지정하자 DNS 서버에서 응답이 오지 않았습니다.
+
+  ```text
+  ;; connection timed out; no servers could be reached
+  ```
+
+- NXDOMAIN: 정상 CoreDNS에 존재하지 않는 이름을 묻자 서버가 그 이름이 없다고 답했습니다.
+
+  ```text
+  ** server can't find nonexistent-service.dns-lab.svc.cluster.local: NXDOMAIN
+  ```
 
 </details>
 
