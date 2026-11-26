@@ -61,7 +61,7 @@ Terraform으로 서울 리전에 네트워크와 EKS를 만들고, Private Subne
 
 ### 인라인 정책 2,048자 제한
 
-Terraform을 실행하는 사용자의 권한을 네트워크용과 EKS 관리용으로 나누다가, 사용자 인라인 정책 합산 2,048자 제한에 걸렸습니다. JSON 오류가 아니었습니다. 기존 정책을 지우거나 관리자 권한으로 바꾸는 대신, 같은 내용을 고객 관리형 정책 `AegisEKSIAMRoleAccess`로 만들어 연결했습니다. 역할 관리 권한은 Cluster/Node Role 2개로만 한정했고, 정책 시뮬레이터로 `CreateRole`, `AttachRolePolicy`, `DeleteRole`이 허용되는지 확인한 뒤 역할 2개와 정책 연결 4개를 배포했습니다.
+Terraform을 실행하는 사용자의 권한을 네트워크용과 EKS 관리용으로 나누다가, 사용자 인라인 정책 합산 2,048자 제한에 걸렸습니다. JSON 오류가 아니었습니다. 기존 정책을 지우거나 관리자 권한으로 바꾸는 대신, 같은 내용을 고객 관리형 정책 `AegisEKSIAMRoleAccess`로 만들어 연결했습니다. 역할 관리 권한은 Cluster/Node Role 2개로 한정하고, 연결할 관리형 정책 4개와 `iam:PassRole`의 대상 서비스를 조건으로 지정했습니다. 정책 시뮬레이터에서는 지정한 역할 ARN으로 `CreateRole`, `AttachRolePolicy`, `DeleteRole`이 허용되는지 보았고, 정책 연결 검사에는 `iam:PolicyARN` 조건도 입력했습니다. 이후 역할 2개와 정책 연결 4개를 배포했습니다.
 
 ### Node Group의 PassRole과 인스턴스 유형
 
@@ -80,8 +80,6 @@ Load Balancer Controller의 IAM Policy와 Role을 만들다가도 조회 권한�
 NAT Gateway가 한 AZ에만 있어서, Worker를 두 AZ에 나눴어도 NAT나 그 AZ의 장애까지 견디는 구조는 검증하지 않았습니다. 장애 실험도 Pod 하나를 지운 것이 전부입니다. 노드, AZ, NAT 장애나 높은 부하는 시험하지 않았고, 약 1초 간격으로 90건이 성공했다는 것도 이 실험에서 관측한 값입니다.
 
 ALB는 HTTP만 씁니다. 실제 서비스라면 HTTPS와 인증서, 접근 통제가 더 필요합니다. 권한도 최소 권한을 완성했다고 말하기 어렵습니다. EC2/EKS 관리 정책에 서울 리전 조건은 있지만 일부 작업의 리소스 범위는 `*`이고, VPC CNI 정책은 초기 구성을 단순하게 하려고 Node Role에 붙였습니다.
-
-`/readyz` 범위, Controller가 만든 리소스와 Terraform State의 관계, 비용은 접어 둔 상세에 적었습니다.
 
 후속 기록인 [07 Blue/Green](../07-safe-deployment/README.md)은 이 인프라 코드를 재사용해 환경을 다시 만들고, 새 ALB에서 슬롯 전환을 관측했습니다. [08 CPU·HPA·OOM](../08-observability-scaling/README.md)은 기존 ECR을 참조하는 별도의 EKS·Terraform State 환경에서 자원과 확장 동작을 비교했습니다.
 
