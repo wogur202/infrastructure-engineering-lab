@@ -39,33 +39,39 @@ Terraform으로 서울 리전에 네트워크와 EKS를 만들고, Private Subne
 
 ## 구축 중 막힌 곳
 
-권한 오류가 나도 AWS에는 리소스가 이미 만들어져 있을 때가 있었습니다. 그래서 오류가 나면 다시 `apply`하기 전에 실제 AWS 상태, Terraform State, 새 Plan을 차례로 맞춰 봤습니다.
+권한 오류가 나도 AWS에는 리소스가 이미 만들어져 있을 때가 있었습니다. 그래서 다시 `apply`하기 전에 실제 AWS 상태와 State, 새 Plan을 먼저 맞춰 봤습니다. 막힌 곳은 네 군데였습니다.
 
-### EIP 조회 권한 오류와 부분 배포
+### EIP 조회 권한
 
-첫 네트워크 배포는 EIP를 할당한 뒤 `ec2:DescribeAddressesAttribute` 권한이 없어서 멈췄습니다. `DescribeAddresses`와는 별개의 권한입니다. VPC와 서브넷은 이미 만들어진 상태라서, 처음부터 다시 실행하면 안 됐습니다.
+첫 네트워크 배포가 EIP를 만든 뒤 `ec2:DescribeAddressesAttribute` 권한이 없어서 멈췄습니다. VPC와 서브넷은 이미 만들어진 상태라 처음부터 다시 돌릴 수는 없었습니다.
 
-조회 권한을 추가한 다음에도 바로 고치지 않고 먼저 상태를 맞춰 봤습니다. `terraform state list`와 AWS의 EIP 조회를 대조하니 EIP는 State와 AWS 양쪽에 있었습니다. 속성 조회 API는 종료 코드 0이었지만 `Addresses: []`를 돌려줘서, 속성 데이터가 확인됐다고는 적지 않았습니다. 새 Plan에서는 EIP가 `tainted`로 표시되며 `3 to add, 0 to change, 1 to destroy`가 나왔는데, 이 계획은 적용하지 않았습니다.
+권한을 추가하고 AWS와 State를 대조했더니 EIP는 양쪽에 있었습니다. 그런데 Terraform은 이 EIP를 `tainted`로 보고, 지우고 다시 만드는 `3 to add, 0 to change, 1 to destroy` 계획을 내놓았습니다. 이 계획은 적용하지 않았습니다.
 
-복구는 AWS와 State 양쪽에서 EIP를 확인한 뒤에 했습니다. State를 로컬에 백업하고 `terraform untaint aws_eip.nat`으로 교체 표시를 풀었더니, Plan이 NAT Gateway와 Private 경로만 만드는 `2 to add, 0 to change, 0 to destroy`로 바뀌었습니다. 이것을 적용해서 `2 added, 0 changed, 0 destroyed`를 확인했고, NAT `available`, EIP 연결, `No changes`까지 봤습니다. 실제 EIP를 지우거나 State를 직접 고치지는 않았습니다.
+대신 State를 백업하고 `terraform untaint aws_eip.nat`으로 교체 표시만 풀었습니다. Plan은 NAT Gateway와 Private 경로만 만드는 `2 to add, 0 to change, 0 to destroy`로 줄었고, 적용한 뒤 `No changes`까지 확인했습니다. 실제 EIP는 건드리지 않았습니다. `untaint`는 실제 EIP가 있고 권한이 복구된 것을 확인했기 때문에 쓸 수 있었던 방법입니다.
 
-`untaint`는 실패 이력만 보고 늘 쓰는 해결책이 아닙니다. 이번에는 실제 EIP가 있고 조회 권한이 복구된 것을 먼저 확인한 뒤에 썼습니다. 실패 당시의 터미널 전체 로그는 원본으로 남기지 않았고, 재구성한 로그를 원본처럼 만들지도 않았습니다.
+<details>
+<summary>EIP 복구에서 확인한 것</summary>
+
+- 속성 조회 API는 종료 코드 0이었지만 `Addresses: []`를 돌려줘서, 속성 데이터가 확인됐다고는 적지 않았습니다.
+- 적용 결과는 `2 added, 0 changed, 0 destroyed`였고, 이후 NAT `available`과 EIP 연결, `No changes`를 확인했습니다.
+- State를 직접 고치지 않았고, `DescribeAddresses`와 `DescribeAddressesAttribute`는 서로 다른 권한입니다.
+- 실패 당시의 터미널 전체 로그는 원본으로 남기지 않았고, 재구성한 로그를 원본처럼 만들지도 않았습니다.
+
+</details>
 
 ### 인라인 정책 2,048자 제한
 
-Terraform을 실행하는 사용자의 권한은 네트워크용과 EKS 관리용으로 나눴습니다. 역할 관리 권한은 Cluster/Node Role 2개로 한정하고, 연결할 관리형 정책 4개와 `iam:PassRole`의 대상 서비스를 조건으로 걸었습니다. 그런데 이 정책을 사용자 인라인 정책으로 추가하다가, 기존 인라인 정책과 합산한 2,048자 제한에 걸렸습니다. JSON 문법 오류는 아니었습니다. 기존 정책을 지우거나 관리자 권한으로 바꾸는 대신, 같은 JSON을 고객 관리형 정책 `AegisEKSIAMRoleAccess`로 만들어 연결했습니다.
-
-정책 시뮬레이터에서는 지정한 역할 ARN으로 `CreateRole`, `AttachRolePolicy`, `DeleteRole`이 허용되는 것을 확인했고, 정책 연결에는 `iam:PolicyARN` 조건도 넣어 봤습니다. 이후 역할 2개와 정책 연결 4개를 실제로 배포해 AWS API로 조회했습니다.
+Terraform을 실행하는 사용자의 권한을 네트워크용과 EKS 관리용으로 나누다가, 사용자 인라인 정책 합산 2,048자 제한에 걸렸습니다. JSON 오류가 아니었습니다. 기존 정책을 지우거나 관리자 권한으로 바꾸는 대신, 같은 내용을 고객 관리형 정책 `AegisEKSIAMRoleAccess`로 만들어 연결했습니다. 역할 관리 권한은 Cluster/Node Role 2개로만 한정했고, 정책 시뮬레이터로 `CreateRole`, `AttachRolePolicy`, `DeleteRole`이 허용되는지 확인한 뒤 역할 2개와 정책 연결 4개를 배포했습니다.
 
 ### Node Group의 PassRole과 인스턴스 유형
 
-처음 Node Group 생성은 `iam:PassRole` 조건이 맞지 않아 실패했습니다. Node Role이 신뢰하는 서비스는 `ec2.amazonaws.com`이지만, `CreateNodegroup` API로 역할을 넘겨받는 서비스는 `eks.amazonaws.com`이었습니다. 실행 사용자 정책에서 이 차이를 고쳤고, 서비스 연결 역할의 조회 권한도 추가로 풀었습니다.
+Node Group 생성은 `iam:PassRole` 조건 때문에 실패했습니다. Node Role이 신뢰하는 서비스는 `ec2.amazonaws.com`인데, `CreateNodegroup`으로 역할을 넘겨받는 서비스는 `eks.amazonaws.com`이었습니다. 허용 대상을 고치고 서비스 연결 역할의 조회 권한도 추가로 풀었습니다.
 
-그다음에는 `t3.medium`이 이 계정의 Free Tier 대상 유형이 아니라는 오류로 노드 생성이 실패했습니다. 쓸 수 있는 유형과 계정 제약을 확인한 뒤 `m7i-flex.large`로 바꿨고, 노드 두 대가 AZ-a와 AZ-c에서 Ready가 됐습니다.
+이어서 `t3.medium`이 이 계정의 Free Tier 대상 유형이 아니라는 오류로 노드 생성이 실패했습니다. 쓸 수 있는 유형을 확인해 `m7i-flex.large`로 바꿨고, 노드 두 대가 AZ-a와 AZ-c에서 Ready가 됐습니다.
 
-### ALB Controller의 IAM과 tainted
+### ALB Controller의 IAM
 
-AWS Load Balancer Controller의 IAM Policy와 Role을 만들다가도 조회 권한이 부족해서 Terraform이 일부만 실패했습니다. AWS에는 두 리소스가 있었지만 State에는 `tainted`로 기록돼 있었습니다. 조회 권한을 보완하고 실제 AWS 상태를 확인한 뒤, State를 백업하고 `untaint`했습니다. 삭제하거나 다시 만들지 않고 Policy Attachment 1개만 적용해서 복구했습니다.
+Load Balancer Controller의 IAM Policy와 Role을 만들다가도 조회 권한이 부족해서 일부만 만들어졌습니다. AWS에는 두 리소스가 있었지만 State에서는 `tainted`였습니다. 권한을 보완하고 AWS 상태를 확인한 뒤 State를 백업하고 `untaint`해서, 삭제나 재생성 없이 Policy Attachment 1개만 적용했습니다.
 
 ## 남은 한계
 
