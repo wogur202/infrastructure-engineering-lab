@@ -10,6 +10,89 @@ Terraform으로 서울 리전에 네트워크와 EKS를 만들고, Private Subne
 
 ## 만든 구성
 
+![외부 클라이언트에서 ALB를 거쳐 두 AZ의 Pod로 가는 경로와, Pod가 NAT Gateway로 나가는 경로](diagrams/architecture-simple.png)
+
+서울 리전의 두 AZ에 서브넷을 나누고, Worker Node 두 대를 서로 다른 AZ의 Private Subnet에 두었습니다. API는 Pod 2개이고, 인터넷에 열린 ALB가 Service를 거치지 않고 Pod IP로 바로 요청을 전달합니다.
+
+실습 비용을 줄이려고 NAT Gateway는 한 AZ에만 두었습니다. 대신 다른 AZ의 Pod도 이 NAT를 쓰기 때문에, 그 AZ에 장애가 나면 영향을 받을 수 있고 AZ 간 데이터 전송 비용도 생길 수 있습니다.
+
+## Pod 하나를 지웠을 때
+
+정상 상태에서 ALB 주소로 약 1초 간격의 외부 요청 기록을 시작하고(00:42:00), 5초 뒤에 Pod `h5h86`을 삭제했습니다. Deployment가 새 Pod `tnz25`를 만들었고, 새 Pod는 삭제된 Pod와 같은 Worker에서 실행됐습니다.
+
+![Pod 삭제 전후 90건의 외부 요청이 삭제한 Pod, 유지된 Pod, 새 Pod 중 어디서 응답했는지 보여 주는 타임라인](evidence/recovery/pod-delete-responses.png)
+
+| 응답한 Pod | HTTP 200 횟수 |
+|---|---:|
+| 삭제한 Pod `h5h86` | 4 |
+| 유지된 Pod `xzgcj` | 47 |
+| 새 Pod `tnz25` | 39 |
+| 합계 | 90 |
+
+90건 모두 HTTP 200이었습니다. 삭제 요청(00:42:05) 뒤에도 00:42:07까지는 삭제된 Pod가 응답했고, 00:42:08~11에는 유지된 Pod만 응답했습니다. 새 Pod가 처음 응답한 것은 00:42:12로, 삭제 요청에서 약 7초 뒤입니다. 이 7초는 Pod가 Ready가 된 시간이나 ALB에서 Healthy로 바뀐 시간과는 다른 값입니다.
+
+삭제 후 확인한 Target Group 화면에는 Healthy 대상 2개와 Draining 대상 1개가 표시됐습니다.
+
+![삭제 후 Target Group 화면: 대상 3개 중 정상 2, 드레이닝 1](evidence/recovery/target-transition.png)
+
+성공률 숫자보다, 삭제된 Pod와 유지된 Pod와 새 Pod가 각각 언제 응답했는지 남긴 것이 이 실험에서 가장 쓸모 있었습니다.
+
+## 구축 중 막힌 곳
+
+권한 오류가 나도 AWS에는 리소스가 이미 만들어져 있을 때가 있었습니다. 그래서 오류가 나면 다시 `apply`하기 전에 실제 AWS 상태, Terraform State, 새 Plan을 차례로 맞춰 봤습니다.
+
+### EIP 조회 권한 오류와 부분 배포
+
+첫 네트워크 배포는 EIP를 할당한 뒤 `ec2:DescribeAddressesAttribute` 권한이 없어서 멈췄습니다. `DescribeAddresses`와는 별개의 권한입니다. VPC와 서브넷은 이미 만들어진 상태라서, 처음부터 다시 실행하면 안 됐습니다.
+
+조회 권한을 추가한 다음에도 바로 고치지 않고 먼저 상태를 맞춰 봤습니다. `terraform state list`와 AWS의 EIP 조회를 대조하니 EIP는 State와 AWS 양쪽에 있었습니다. 속성 조회 API는 종료 코드 0이었지만 `Addresses: []`를 돌려줘서, 속성 데이터가 확인됐다고는 적지 않았습니다. 새 Plan에서는 EIP가 `tainted`로 표시되며 `3 to add, 0 to change, 1 to destroy`가 나왔는데, 이 계획은 적용하지 않았습니다.
+
+복구는 AWS와 State 양쪽에서 EIP를 확인한 뒤에 했습니다. State를 로컬에 백업하고 `terraform untaint aws_eip.nat`으로 교체 표시를 풀었더니, Plan이 NAT Gateway와 Private 경로만 만드는 `2 to add, 0 to change, 0 to destroy`로 바뀌었습니다. 이것을 적용해서 `2 added, 0 changed, 0 destroyed`를 확인했고, NAT `available`, EIP 연결, `No changes`까지 봤습니다. 실제 EIP를 지우거나 State를 직접 고치지는 않았습니다.
+
+`untaint`는 실패 이력만 보고 늘 쓰는 해결책이 아닙니다. 이번에는 실제 EIP가 있고 조회 권한이 복구된 것을 먼저 확인한 뒤에 썼습니다. 실패 당시의 터미널 전체 로그는 원본으로 남기지 않았고, 재구성한 로그를 원본처럼 만들지도 않았습니다.
+
+### 인라인 정책 2,048자 제한
+
+Terraform을 실행하는 사용자의 권한은 네트워크용과 EKS 관리용으로 나눴습니다. 역할 관리 권한은 Cluster/Node Role 2개로 한정하고, 연결할 관리형 정책 4개와 `iam:PassRole`의 대상 서비스를 조건으로 걸었습니다. 그런데 이 정책을 사용자 인라인 정책으로 추가하다가, 기존 인라인 정책과 합산한 2,048자 제한에 걸렸습니다. JSON 문법 오류는 아니었습니다. 기존 정책을 지우거나 관리자 권한으로 바꾸는 대신, 같은 JSON을 고객 관리형 정책 `AegisEKSIAMRoleAccess`로 만들어 연결했습니다.
+
+정책 시뮬레이터에서는 지정한 역할 ARN으로 `CreateRole`, `AttachRolePolicy`, `DeleteRole`이 허용되는 것을 확인했고, 정책 연결에는 `iam:PolicyARN` 조건도 넣어 봤습니다. 이후 역할 2개와 정책 연결 4개를 실제로 배포해 AWS API로 조회했습니다.
+
+### Node Group의 PassRole과 인스턴스 유형
+
+처음 Node Group 생성은 `iam:PassRole` 조건이 맞지 않아 실패했습니다. Node Role이 신뢰하는 서비스는 `ec2.amazonaws.com`이지만, `CreateNodegroup` API로 역할을 넘겨받는 서비스는 `eks.amazonaws.com`이었습니다. 실행 사용자 정책에서 이 차이를 고쳤고, 서비스 연결 역할의 조회 권한도 추가로 풀었습니다.
+
+그다음에는 `t3.medium`이 이 계정의 Free Tier 대상 유형이 아니라는 오류로 노드 생성이 실패했습니다. 쓸 수 있는 유형과 계정 제약을 확인한 뒤 `m7i-flex.large`로 바꿨고, 노드 두 대가 AZ-a와 AZ-c에서 Ready가 됐습니다.
+
+### ALB Controller의 IAM과 tainted
+
+AWS Load Balancer Controller의 IAM Policy와 Role을 만들다가도 조회 권한이 부족해서 Terraform이 일부만 실패했습니다. AWS에는 두 리소스가 있었지만 State에는 `tainted`로 기록돼 있었습니다. 조회 권한을 보완하고 실제 AWS 상태를 확인한 뒤, State를 백업하고 `untaint`했습니다. 삭제하거나 다시 만들지 않고 Policy Attachment 1개만 적용해서 복구했습니다.
+
+## 남은 한계
+
+이 결과로 운영 환경의 무중단이나 고가용성을 말할 수는 없습니다.
+
+NAT Gateway가 한 AZ에만 있어서, Worker를 두 AZ에 나눴어도 NAT나 그 AZ의 장애까지 견디는 구조는 검증하지 않았습니다. 장애 실험도 Pod 하나를 지운 것이 전부입니다. 노드, AZ, NAT 장애나 높은 부하는 시험하지 않았고, 약 1초 간격으로 90건이 성공했다는 것도 이 실험에서 관측한 값입니다.
+
+ALB는 HTTP만 씁니다. 실제 서비스라면 HTTPS와 인증서, 접근 통제가 더 필요합니다. 권한도 최소 권한을 완성했다고 말하기 어렵습니다. EC2/EKS 관리 정책에 서울 리전 조건은 있지만 일부 작업의 리소스 범위는 `*`이고, VPC CNI 정책은 초기 구성을 단순하게 하려고 Node Role에 붙였습니다.
+
+`/readyz` 범위, Controller가 만든 리소스와 Terraform State의 관계, 비용은 접어 둔 상세에 적었습니다.
+
+후속 기록인 [07 Blue/Green](../07-safe-deployment/README.md)은 이 인프라 코드를 재사용해 환경을 다시 만들고, 새 ALB에서 슬롯 전환을 관측했습니다. [08 CPU·HPA·OOM](../08-observability-scaling/README.md)은 기존 ECR을 참조하는 별도의 EKS·Terraform State 환경에서 자원과 확장 동작을 비교했습니다.
+
+## 증빙
+
+- Pod 삭제: [HTTP 90건 원본](evidence/recovery/http-during-failure.txt), [Target 화면](evidence/recovery/target-transition.png), [삭제](evidence/recovery/deletion-time.txt)·[rollout](evidence/recovery/rollout-time.txt) 시각, [Terraform 최종 검사](evidence/recovery/terraform-final-check.txt), 그 밖의 [장애 전후 상태](evidence/recovery/)
+- ALB: [외부 HTTP 응답](evidence/alb/http-responses.txt), [ALB 응답 20회](evidence/alb/alb-responses.txt), [장애 전 Target 화면](evidence/alb/target-health.png)
+- 앱·EKS·네트워크: [내부 Service 응답](evidence/app/load-balancing.txt), [`evidence/eks/`](evidence/eks/), [NAT 조회](evidence/network/nat-status.json), [배포 후 No changes](evidence/network/terraform-no-drift.txt)
+- 코드: `terraform/`, `app/`, `k8s/`, [`recovery-test.sh`](recovery-test.sh)
+
+네트워크 증빙 두 파일은 네트워크 배포 당시의 기록이라, 이후 IAM·EKS 코드까지 포함한 최신 실행 로그는 아닙니다. 리소스 ID는 남아 있지만 인증정보는 포함하지 않습니다.
+
+<details>
+<summary>구성 상세</summary>
+
+### 자세한 아키텍처
+
 ```mermaid
 flowchart TB
     USER["External Client"]
@@ -68,93 +151,9 @@ flowchart TB
     class IGW,NAT,ECR network
 ```
 
-굵은 실선이 실제 HTTP 요청 경로이고, 점선은 대상 등록·이미지 pull·outbound 같은 제어와 부가 경로입니다. ALB는 Service를 거치지 않고 Pod IP로 바로 전달하며, Service/EndpointSlice의 정보를 Controller가 읽어 ALB의 Target을 등록합니다.
+굵은 실선이 실제 HTTP 요청 경로이고, 점선은 대상 등록·이미지 pull·outbound 같은 제어와 부가 경로입니다. ALB는 Service를 거치지 않고 Pod IP로 바로 전달하며, Service/EndpointSlice의 정보를 Controller가 읽어 ALB의 Target을 등록합니다. 다이어그램 원본은 [`architecture.mmd`](diagrams/architecture.mmd)입니다.
 
-
-VPC `10.20.0.0/16`에 Public·Private 서브넷을 두 AZ에 나눠 만들었고, EKS(`aegis-eks`, Kubernetes 1.36)의 Worker Node 2개는 서로 다른 AZ의 Private 서브넷에 있습니다. API는 Deployment 2 Replicas이고, Internet-facing ALB가 IP Target으로 Pod에 직접 연결합니다. 구성 전체는 맨 아래 '구성 상세'에 접어 두었고, 다이어그램 원본은 [`architecture.mmd`](diagrams/architecture.mmd)입니다.
-
-실습 비용을 줄이기 위해 NAT Gateway는 한 AZ에만 배치했습니다. 대신 다른 AZ의 Private Subnet도 이 NAT를 사용하므로, AZ 장애에 취약하고 AZ 간 데이터 전송 비용이 발생할 수 있습니다.
-
-## Pod 하나를 지웠을 때
-
-정상 상태에서 ALB 주소로 약 1초 간격의 외부 요청 기록을 시작하고(00:42:00), 5초 뒤에 Pod `h5h86`을 삭제했습니다. Deployment가 새 Pod `tnz25`를 만들었고, 새 Pod는 삭제된 Pod와 같은 Worker에서 실행됐습니다.
-
-![Pod 삭제 전후 90건의 외부 요청이 삭제한 Pod, 유지된 Pod, 새 Pod 중 어디서 응답했는지 보여 주는 타임라인](evidence/recovery/pod-delete-responses.png)
-
-| 응답한 Pod | HTTP 200 횟수 |
-|---|---:|
-| 삭제한 Pod `h5h86` | 4 |
-| 유지된 Pod `xzgcj` | 47 |
-| 새 Pod `tnz25` | 39 |
-| 합계 | 90 |
-
-90건 모두 HTTP 200이었습니다. 삭제 요청(00:42:05) 뒤에도 00:42:07까지는 삭제된 Pod가 응답했고, 00:42:08~11에는 유지된 Pod만 응답했습니다. 새 Pod가 외부 요청에 처음 응답한 것은 00:42:12로, 삭제 요청에서 약 7초 뒤입니다. 이 7초는 Pod가 Ready가 된 시간이나 ALB에서 Healthy로 바뀐 시간과는 다른 값입니다.
-
-삭제 후 확인한 Target Group 화면에는 Healthy 대상 2개와 Draining 대상 1개가 표시됐습니다.
-
-![삭제 후 Target Group 화면: 대상 3개 중 정상 2, 드레이닝 1](evidence/recovery/target-transition.png)
-
-성공률 숫자보다, 삭제된 Pod와 유지된 Pod와 새 Pod가 각각 언제 응답했는지 남긴 것이 이 실험에서 가장 쓸모 있었습니다.
-
-## 구축 중 막힌 곳
-
-권한 오류가 나도 AWS에는 리소스가 이미 만들어져 있는 경우가 있었습니다. 그래서 오류 메시지만 보거나 다시 `apply`하지 않고, 실제 AWS 상태, Terraform State, 새 Plan 순서로 확인했습니다.
-
-### EIP 조회 권한 오류와 부분 배포
-
-첫 네트워크 배포는 EIP를 할당한 뒤 `ec2:DescribeAddressesAttribute` 권한 오류로 멈췄습니다. `DescribeAddresses`와는 별개의 권한입니다. VPC와 서브넷은 이미 만들어진 상태라 처음부터 다시 실행하면 안 되는 상황이었습니다.
-
-오류 메시지에 나온 API의 조회 권한을 기존 네트워크 정책에 추가한 뒤, 무엇을 할지 정하기 전에 먼저 상태를 대조했습니다.
-
-- `terraform state list`와 AWS의 EIP 조회: EIP는 State와 AWS 양쪽에 있었습니다. 속성 조회 API는 종료 코드 0으로 바뀌었지만 `Addresses: []`를 돌려줘서, 속성 데이터가 확인됐다고는 적지 않았습니다.
-- 새 Plan: EIP가 `tainted`로 표시되고 `3 to add, 0 to change, 1 to destroy`가 나왔습니다. 이 계획은 적용하지 않았습니다.
-
-복구는 그다음입니다. AWS와 State 양쪽에서 EIP가 있는 것을 확인한 뒤, State를 로컬 파일로 백업하고 `terraform untaint aws_eip.nat`으로 교체 표시를 풀었습니다. 새 Plan에서 NAT Gateway와 Private 경로만 만드는 `2 to add, 0 to change, 0 to destroy`를 확인하고 적용했고, 결과는 `2 added, 0 changed, 0 destroyed`였습니다. 이후 NAT `available`, EIP 연결, `No changes`까지 검증했습니다. 실제 EIP를 지우거나 State를 직접 고치지는 않았습니다.
-
-`untaint`는 실패 이력만 보고 늘 쓰는 해결책이 아닙니다. 이번에는 실제 EIP가 있고 조회 권한이 복구된 것을 먼저 확인한 뒤에 썼습니다. 실패 당시의 터미널 전체 로그는 원본으로 남기지 않았고, 재구성한 로그를 원본처럼 만들지도 않았습니다.
-
-### 인라인 정책 2,048자 제한
-
-Terraform 실행 사용자의 권한을 네트워크용과 EKS 관리용으로 나눴습니다. 역할 관리 권한은 Cluster/Node Role 2개로 한정하고, 연결할 관리형 정책 4개와 `iam:PassRole`의 대상 서비스를 조건으로 걸었습니다. 이 정책을 사용자 인라인 정책으로 추가하다가, 기존 인라인 정책과 합산한 2,048자 제한에 걸렸습니다. JSON 문법 오류는 아니었습니다. 기존 정책을 지우거나 관리자 권한으로 바꾸는 대신, 같은 JSON을 고객 관리형 정책 `AegisEKSIAMRoleAccess`로 만들어 연결했습니다.
-
-정책 시뮬레이터에서는 지정한 역할 ARN으로 `CreateRole`, `AttachRolePolicy`, `DeleteRole`이 허용되는 것을 확인했고, 정책 연결에는 `iam:PolicyARN` 조건도 넣어 봤습니다. 이후 역할 2개와 정책 연결 4개를 실제로 배포해 AWS API로 조회했습니다.
-
-### Node Group의 PassRole과 인스턴스 유형
-
-처음 Node Group 생성은 `iam:PassRole` 조건이 맞지 않아 실패했습니다. Node Role이 신뢰하는 서비스는 `ec2.amazonaws.com`이지만, `CreateNodegroup` API로 역할을 넘겨받는 서비스는 `eks.amazonaws.com`이었습니다. 실행 사용자 정책에서 이 차이를 고쳤고, 서비스 연결 역할의 조회 권한도 추가로 풀었습니다.
-
-그다음에는 `t3.medium`이 이 계정의 Free Tier 대상 유형이 아니라는 오류로 노드 생성이 실패했습니다. 쓸 수 있는 유형과 계정 제약을 확인한 뒤 `m7i-flex.large`로 바꿨고, 노드 두 대가 AZ-a와 AZ-c에서 Ready가 됐습니다.
-
-### ALB Controller의 IAM과 tainted
-
-AWS Load Balancer Controller의 IAM Policy와 Role을 만들다가도 조회 권한이 부족해서 Terraform이 일부만 실패했습니다. AWS에는 두 리소스가 있었지만 State에는 `tainted`로 기록돼 있었습니다. 조회 권한을 보완하고 실제 AWS 상태를 확인한 뒤, State를 백업하고 `untaint`했습니다. 삭제하거나 다시 만들지 않고 Policy Attachment 1개만 적용해서 복구했습니다.
-
-## 남은 한계
-
-이 결과로 운영 환경의 무중단이나 고가용성을 말할 수는 없습니다.
-
-NAT Gateway가 한 AZ에만 있어서, Worker를 두 AZ에 나눴어도 NAT나 그 AZ의 장애까지 견디는 구조는 검증하지 않았습니다. 장애 실험도 Pod 하나를 지운 것이 전부입니다. 노드, AZ, NAT 장애나 높은 부하는 시험하지 않았고, 약 1초 간격으로 90건이 성공했다는 것도 이 실험에서 관측한 값입니다.
-
-ALB는 HTTP만 씁니다. 실제 서비스라면 HTTPS와 인증서, 접근 통제가 더 필요합니다. 권한도 최소 권한을 완성했다고 말하기 어렵습니다. EC2/EKS 관리 정책에 서울 리전 조건은 있지만 일부 작업의 리소스 범위는 `*`이고, VPC CNI 정책은 초기 구성을 단순하게 하려고 Node Role에 붙였습니다.
-
-`/readyz` 범위, Controller가 만든 리소스와 Terraform State의 관계, 비용은 접어 둔 상세에 적었습니다.
-
-후속 기록인 [07 Blue/Green](../07-safe-deployment/README.md)은 이 인프라 코드를 재사용해 환경을 다시 만들고, 새 ALB에서 슬롯 전환을 관측했습니다. [08 CPU·HPA·OOM](../08-observability-scaling/README.md)은 기존 ECR을 참조하는 별도의 EKS·Terraform State 환경에서 자원과 확장 동작을 비교했습니다.
-
-## 증빙
-
-- Pod 삭제: [HTTP 90건 원본](evidence/recovery/http-during-failure.txt) · [Target 전환 화면](evidence/recovery/target-transition.png) · [삭제 시각](evidence/recovery/deletion-time.txt) · [rollout 시각](evidence/recovery/rollout-time.txt) · [장애 전후 Pod·Endpoint 상태](evidence/recovery/) · [Terraform 최종 검사](evidence/recovery/terraform-final-check.txt)
-- ALB: [외부 HTTP 응답](evidence/alb/http-responses.txt) · [ALB 응답 20회](evidence/alb/alb-responses.txt) · [장애 전 Target 화면](evidence/alb/target-health.png)
-- 앱·EKS: [내부 Service 응답](evidence/app/load-balancing.txt) · [`evidence/eks/`](evidence/eks/)
-- 네트워크: [NAT 조회 결과](evidence/network/nat-status.json) · [네트워크 배포 후 No changes](evidence/network/terraform-no-drift.txt)
-- 코드: `terraform/`(VPC, 네트워크, EKS, ECR, OIDC, IAM), `app/`(Python API, Dockerfile), `k8s/`, [`recovery-test.sh`](recovery-test.sh)(Pod 삭제와 HTTP 관측)
-
-네트워크 증빙 두 파일은 네트워크 배포 당시의 기록이라, 이후 IAM·EKS 코드까지 포함한 최신 실행 로그는 아닙니다. 리소스 ID는 남아 있지만 인증정보는 포함하지 않습니다.
-
-<details>
-<summary>구성 상세</summary>
-
-### 구성 상세
+### 구성 표
 
 | 구성 | 실제 결과 |
 | --- | --- |
