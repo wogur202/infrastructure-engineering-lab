@@ -33,11 +33,11 @@ v2는 SIGTERM을 받으면 새 요청을 더 받지 않고, 처리 중인 요청
 
 Drain 로그에는 `spot-lab-worker`의 서버 Pod가 퇴거된 기록이 있고, 이후 Pod 목록에는 `spot-lab-worker2`에서 도는 Pod 2개가 남아 있습니다. 두 측정 모두 응답 시간은 약 3초였습니다.
 
-실패가 없었다고 해서 Graceful Shutdown 덕분이라고 단정할 수는 없습니다. 요청을 순차로 보냈고, 다른 Worker에서 이미 돌고 있던 서버 Pod가 요청을 받을 수 있었기 때문입니다. Pod 상태는 Drain이 끝난 뒤에 확인해서 재배치에 걸린 시간도 재지 못했습니다. 이번 결과는 이 조건에서 HTTP 실패가 관측되지 않았다는 데까지입니다.
+20건이 전부 200으로 돌아왔지만, 이게 Graceful Shutdown 덕분이라고는 말하기 어려웠습니다. 요청을 하나씩 보냈고, 다른 Worker에 이미 떠 있던 Pod가 받을 수 있는 상황이었습니다. Pod 상태는 Drain이 끝난 뒤에 확인해서 재배치에 걸린 시간도 재지 못했습니다. 이 조건에서 HTTP 실패가 관측되지 않았다는 데까지가 이번 결과입니다.
 
 ## 남은 한계
 
-가장 큰 빈칸은 종료되는 Pod로 요청이 계속 들어오는 구간입니다. Readiness Probe와 `preStop` Hook은 만들지 않았고, Pod가 트래픽 대상에서 빠지는 시점과 요청이 들어오는 시점이 어긋나는 문제도 재지 않았습니다. ([Pod 종료 절차](https://kubernetes.io/docs/concepts/workloads/pods/pod-termination/) 참고)
+가장 아쉬운 건 종료되는 Pod로 요청이 계속 들어오는 구간을 못 본 겁니다. Readiness Probe와 `preStop` Hook은 만들지 않았고, Pod가 트래픽 대상에서 빠지는 시점과 요청이 들어오는 시점이 어긋나는 문제도 재지 않았습니다. ([Pod 종료 절차](https://kubernetes.io/docs/concepts/workloads/pods/pod-termination/) 참고)
 
 v2 코드에는 종료 중 새 요청에 503을 돌려주는 분기가 있지만, 실제로 503이 나가는지는 보지 못했습니다. 대기가 끝났는지 확인하는 코드도 없어서, 종료 완료 로그가 찍혔다고 모든 요청이 끝났다고 할 수는 없습니다. 동시 요청도 시험하지 않았습니다.
 
@@ -71,7 +71,8 @@ v2 코드에는 종료 중 새 요청에 503을 돌려주는 분기가 있지만
 
 - 클라이언트 Pod 설정은 저장하지 않았습니다. 실험 당시 클라이언트는 `spot-lab-worker2`에 두었고, [재현 명령](REPRODUCE.md)에는 이를 명시했습니다.
 - Drain을 요청 시작 약 5초 뒤에 실행했다는 순서는 당시 실행 기록이며, 로그에 공통 타임스탬프가 없습니다.
-- v2 실험의 Drain 직전 Pod 목록은 보관하지 않았습니다. 초기 Drain 전후 목록은 ReplicaSet 해시가 `79b4b8cdb4`이고 v2 Drain 로그는 `644dfc7c8`이라서, 초기 목록을 v2 실험 직전 상태로 해석하지 않았습니다. v2 로그에서 퇴거된 `r759l` Pod는 이후 목록에 없고, `spot-lab-worker2`에 `mrh4s`와 기존 `w6mlk` Pod가 실행 중입니다.
+- v2 실험의 Drain 직전 Pod 목록은 보관하지 않았습니다. 초기 Drain 전후 목록은 ReplicaSet 해시가 `79b4b8cdb4`이고 v2 Drain 로그는 `644dfc7c8`이라서, 초기 목록을 v2 직전 상태로 보지 않았습니다.
+- v2 로그에서 퇴거된 `r759l`은 이후 목록에 없고, `spot-lab-worker2`에는 `mrh4s`와 기존 `w6mlk`가 실행 중입니다.
 - 단일 SIGTERM 실험에서 클라이언트가 잰 약 4.01초와 서버 로그의 요청 처리 시간 약 3초는 측정 지점이 다릅니다.
 
 </details>
