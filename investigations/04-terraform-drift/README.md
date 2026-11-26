@@ -43,7 +43,7 @@ Plan: 0 to add, 1 to change, 0 to destroy.
 
 같은 규칙이 [AWS API 조회 결과](evidence/02-drift/aws-rules-after.json)에도 있었습니다. plan이 가리킨 규칙과 AWS에 실제로 있는 규칙이 같았으니, 코드 밖에서 생긴 변경을 Terraform이 찾아낸 것은 맞습니다.
 
-다만 이 단계의 plan은 무엇을 할지 보여 줄 뿐, AWS 설정을 바꾸지는 않습니다. 찾아낸 것과 되돌린 것은 다른 단계입니다.
+다만 이 단계의 plan은 무엇을 할지 보여 줄 뿐, AWS 설정을 바꾸지는 않습니다.
 
 ## 바로 되돌려도 될까
 
@@ -59,6 +59,8 @@ aws_security_group.drift_lab: Modifications complete after 1s
 
 Apply complete! Resources: 0 added, 1 changed, 0 destroyed.
 ```
+
+이 apply 출력은 원본 로그를 파일로 보관하지 못했습니다. 복구 결과는 아래의 규칙 재조회와 최종 plan으로 확인했습니다.
 
 보안 그룹을 새로 만드는 대신, 기존 보안 그룹의 인바운드 규칙을 수정했습니다. 처음 plan부터 [최종 plan](evidence/05-validation/final-plan.txt)까지 출력된 보안 그룹 ID(`sg-06bc…`)도 같았습니다. 이어서 AWS API로 규칙을 다시 조회했더니, [TCP 8080 규칙은 없어졌습니다](evidence/04-recovery/aws-rules-after-recovery.json).
 
