@@ -121,4 +121,3 @@ Mac CD의 별도 실행자 역할에는 EKS API 인증 모드의 Access Entry와
 - 실제 이미지 게시 태그는 전체 Commit SHA의 `git-17ea0b4eeb2c2e4409636264c5307dd33f3edf6c`다. Immutable 태그의 재실행 충돌 경로는 로컬 테스트 범위이며 실제 중복 게시 실험은 추가하지 않았다.
 - 업무 503은 두 헬스 경로의 정상 응답과 별도로 관측했다. 이 장애를 로컬 Smoke Test가 실패로 판정하는 동작은 테스트에 포함돼 있다. 실운영 자동 배포 차단·자동 복구까지 실증한 것은 아니다.
 - ECR Scan 결과 기반 차단, 독립 승인자, GitHub Runner의 EKS 접근, 제한 RBAC로 실제 배포, 다른 이미지 버전 간 Rollback은 미검증이다.
-- 이번 증빙 정리에서는 앱·Workflow·Manifest·IAM 템플릿을 수정하지 않았다. STEP 01~06 추적 파일과 기존 사용자 `outputs.tf`도 보존했다. Commit/Push는 별도 검토 대상이다.

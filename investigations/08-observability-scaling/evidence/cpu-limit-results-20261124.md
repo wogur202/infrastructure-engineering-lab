@@ -1,6 +1,10 @@
-# CPU Limit 교차 반복 실험 결과 — 공개 초안
+# CPU Limit 교차 반복 실험 결과
 
 2026-11-23~24(KST), STEP08 / 8-C-2. 기존 EKS와 동일 앱·k6·수집기를 사용해 3쌍을 비교했다.
+
+종료 상태와 미검증 범위는 이 CPU 비교가 끝난 시점의 기록이다. 후속 결과는
+[HPA 비교](hpa-results-20261124.md)와 [독립 Job OOM 비교](oom-results-20261124.md),
+최종 환경 정리 상태는 [README](../README.md)에 있다.
 
 ## 질문과 통제 조건
 
@@ -64,12 +68,12 @@ AWS CLI 인증 만료는 기존terraform-lab으로 재인증했고 종료된 loc
 | T5 | 2026-11-23T22:31:10.060667Z | 2026-11-23T22:34:10.060667Z |
 | T6 | 2026-11-23T22:36:29.290205Z | 2026-11-23T22:39:29.290205Z |
 
-## 보존과 다음 범위
+## 종료 상태와 증빙
 
 20RPS Pilot은 Probe 실패·재시작이 개입한 과부하 사례로 별도 보존하고 이6회 비교에서 제외했다. 본실험 무효Trial은 없었으며 불리하거나 차이가 작은 결과도 포함했다.
 
 원본k6 raw/summary, Prometheus query_range와 원시cAdvisor, Pod/Node/Events, 설정·이미지·검증 JSON은 Git 제외 `evidence/private/cpu-t*`에 보존한다. 종합 결과와 SHA256 검증은 비공개 `.local/c-2/`에 보관한다. 공개본에는 계정ID·ARN·IP·kubeconfig·Secret·개인 절대경로를 넣지 않았다.
 
-마지막 설정은 request250m/limit1000m, Replica1, HPA OFF다. HPA/OOM 효과는 아직 검증하지 않았다. HPA 준비에는 별도500m 설정, 실제API2개 Ready, Metrics API 및1Pod/2Pod 수용량 Pilot을 확인해야 하므로 이번CPU 결과만으로 HPA 본실험GO를 내리지 않는다. 기존 인프라·Helm·ECR과 STEP01~07은 보존하고 Commit/Push는 하지 않는다.
+CPU 비교 종료 시점의 설정은 request250m/limit1000m, Replica1, HPA OFF였다. 이 단계에서는 HPA/OOM 효과를 검증하지 않았다. HPA 준비에 필요한 별도500m 설정, 실제API2개 Ready, Metrics API 및1Pod/2Pod 수용량 Pilot은 이 CPU 비교 결과만으로 확인할 수 없었다.
 
-최종 상태 확인(UTC): `2026-11-23T22:45:05.271213+00:00`. 본실험 Job6개 모두 자연 종료·성공, 실행 중 부하0이다. API1개 Ready·현재 Pod 재시작0, healthz/readyz/info HTTP200, Worker2대 Ready, Prometheus11/11 Up 및 표본 신선도45초 이내를 다시 확인했다. 기존 인프라는 유지 중이다.
+최종 상태 확인(UTC): `2026-11-23T22:45:05.271213+00:00`. 본실험 Job6개 모두 자연 종료·성공, 실행 중 부하0이었다. API1개 Ready·당시 Pod 재시작0, healthz/readyz/info HTTP200, Worker2대 Ready, Prometheus11/11 Up 및 표본 신선도45초 이내를 다시 확인했다. 이 시점에는 기존 인프라를 유지했다.

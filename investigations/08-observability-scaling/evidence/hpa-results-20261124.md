@@ -4,6 +4,9 @@
 HPA는 세 번 모두 1→2→1로 동작했고 CPU 부하를 분산했다. 이번 부하에서는 1개 Pod도
 목표 요청을 처리했으며, HPA의 처리량 증가나 응답 지연 개선은 확인하지 못했다.
 
+종료 상태는 이 HPA 비교가 끝난 시점의 기록이다. 후속 [독립 Job OOM 비교](oom-results-20261124.md)와
+최종 환경 정리 상태는 [README](../README.md)에 구분해 정리했다.
+
 ## 1. 조건과 실행 순서
 
 - W=100000, 목표 30 RPS, warm-up 60초 + 측정 240초.
@@ -127,12 +130,12 @@ CFS0.758% 자체를 제외 이유로 쓰지 않았다. 원본·정상 결과·�
 API1개 Ready/restart0, HPA current=desired1(min1/max2), 활성 부하0, 여섯 Job Complete를 확인했다.
 기존 Worker2개와 Node UID/providerID가 유지됐고 Prometheus11/11 Up·Metrics API 정상,
 healthz/readyz/api/info 모두200이었다. PVC·Ingress·LoadBalancer Service는 없다.
-AWS 인프라는 보존했으며 Terraform/IAM 변경·Git Commit/Push·OOM 실행은 하지 않았다.
+이 HPA 비교에서는 AWS 인프라를 유지했으며 Terraform/IAM 변경이나 OOM 실행은 하지 않았다.
 
 원본은 Git 제외 경로 evidence/private/hpa-t1b-off-043431, hpa-t2-on-044055, hpa-t3-on-045209,
 hpa-t4-off-050301, hpa-t5-off-050938, hpa-t6-on-051617 및 최초 hpa-t1-off-231417에 있다.
 파생 분석·관측 품질·최종 상태·SHA256 목록은 Git 제외 경로 .local/d-2/에 보관했다.
 원본에는 계정·노드·네트워크 식별자가 있어 공개 자료와 분리했다.
 
-OOM Job과 수집 도구는 기존 구현에 있으나 아직 실행하지 않았다. 현재 HPA는 ON으로 보존했다.
-다음 OOM 단계의 API1개/HPA OFF 사전 조건은 아직 적용하지 않았으며 이번 작업에서 진행하지 않는다.
+이 HPA 비교 종료 시점에는 OOM Job을 실행하지 않았고, HPA는 ON으로 유지했다.
+OOM 단계의 API1개/HPA OFF 사전 조건 적용과 실행 결과는 [후속 OOM 기록](oom-results-20261124.md)에 있다.

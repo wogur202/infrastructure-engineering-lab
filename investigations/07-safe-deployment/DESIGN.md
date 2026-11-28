@@ -13,7 +13,7 @@
 | `k8s/ingress.yaml` | 기존 이름의 Ingress에 적용할 Weighted Forward Action 템플릿 |
 | `tests/test_local.py` | 루프백 HTTP 테스트와 렌더링·선택자·가중치 검사 |
 
-07 작업 당시 기존 01~06의 파일·증빙은 수정하지 않았다. 시작 시 06 `terraform/outputs.tf`가 미추적 사용자 파일로 존재했으며 그대로 보존했다(이후 저장소에 포함했다). Namespace 이름 `aegis`를 유지하며 별도 Namespace Manifest는 만들지 않았다. 실제 재구축 시에는 Namespace가 없어 `aegis`를 먼저 생성했다.
+Namespace 이름 `aegis`를 유지하며 별도 Namespace Manifest는 만들지 않았다. 실제 재구축 시에는 Namespace가 없어 `aegis`를 먼저 생성했다.
 
 새 Pod의 공통 라벨은 `app: aegis-api-step07`이고 슬롯은 `slot: blue|green`이다. 06 Service의 기존 선택자 `app: aegis-api`가 새 Pod까지 선택하는 일을 막는다. Deployment 선택자, Pod 라벨, Service 선택자, Topology Spread 선택자를 슬롯별로 맞췄다. 기존 Deployment의 불변 selector는 변경하지 않는다.
 

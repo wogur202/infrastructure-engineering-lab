@@ -68,7 +68,8 @@ API1개 Ready/restart0, HPA OFF, 기존 Worker2개 Ready, Prometheus11/11 Up·Me
 healthz/readyz/api/info도200이며 활성 HTTP 부하는0이다.128Mi Failed/OOMKilled Pod와256Mi Succeeded Pod는 증빙으로 보존했다.
 해당 시점에는 두 번째 k6 컨테이너만 원본 수집용300초 sleep 구간이어서 Job Running으로 남아 있었다.
 k6 프로세스의 exit0과 부하 종료는 확인했으며, Job 자체의 자연 완료와 구분해 기록했다.
-기존 CPU/HPA 원본·결과는 바꾸지 않았고 Git stage/Commit/Push, Terraform/IAM/AWS 인프라 변경·삭제는 하지 않았다.
+이 OOM 실험에서는 기존 CPU/HPA 원본·결과와 Terraform/IAM/AWS 인프라를 변경하거나 삭제하지 않았다.
+이후 환경 정리 상태는 [README](../README.md)에 있다.
 
 ## 6. 증빙 경로
 
@@ -79,4 +80,4 @@ k6 프로세스의 exit0과 부하 종료는 확인했으며, Job 자체의 자�
 - 각 실행의 app.yaml/load.yaml, termination-evidence/, termination-review.json, after-1/, raw-memory-matrix.json, trial-review.json
 - .local/e-1/: 실행 범위·HPA OFF 전환 기록·native watch·results.json·final-state/·SHA256 목록
 
-STEP08의 CPU·HPA·독립 Job OOM 비교는 실행했다. 전체 파일 구성 검토와 공개 자료·Git 정리는 이번 실행에 포함하지 않았다.
+STEP08의 CPU·HPA·독립 Job OOM 비교 결과는 [README](../README.md)에 모아 두었다.

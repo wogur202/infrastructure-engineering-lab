@@ -52,9 +52,12 @@ k6는46.018초의 내부 표본에서 약23.12m, 메모리 최대약16.27MiB, CF
 ## 판정과 종료 상태
 
 - HPA1→2확장·두 Pod Ready·부하 종료 후2→1축소: 실제 관측했다.
-- 성능 Pilot: Probe 경고에 따라 중단한 불완전 실행이다. 깨끗한 HPA OFF/ON 본실험 GO는 보류한다.
+- 성능 Pilot: Probe 경고에 따라 중단한 불완전 실행이다. 이 시점에는 HPA OFF/ON 성능 비교용 본실험을 보류했다.
 - W100000/30RPS는 확장 관찰 후보이며, 기동 전 readiness와 기존 Ready Pod의 Probe 실패를 구분하는 유효성 기준은 후속 검토 대상이다. 경고를 없애기 위한 코드·Probe 변경은 하지 않았다.
 
 최종 확인 UTC2026-11-23T23:06:36.943161+00:00: API request=limit500m·Replica1 Ready·재시작0, HPA ON(min1/max2/target70%)·Desired/Current1이다. 부하0, Worker2대 Ready, healthz/readyz/info HTTP200이다. HPA를 임의 삭제하거나 수동 축소하지 않았다.
 
-원본은 Git 제외 `evidence/private/hpa-off-*`, `evidence/private/hpa-on-*`에 분리 보존했다. k6 raw/summary, HPA·Pod·Event watch 원본, Prometheus 부하·회복 구간, 설정·최종 상태와 SHA256을 보관했다. CPU 본실험 원본은 변경하지 않았다. Terraform/IAM·AWS 인프라·STEP01~07·기존 ECR은 변경하지 않았고 Commit/Push도 하지 않았다. OOM과 HPA OFF/ON 본실험은 실행하지 않았다.
+원본은 Git 제외 `evidence/private/hpa-off-*`, `evidence/private/hpa-on-*`에 분리 보존했다. k6 raw/summary, HPA·Pod·Event watch 원본, Prometheus 부하·회복 구간, 설정·최종 상태와 SHA256을 보관했다. CPU 본실험 원본·Terraform/IAM·AWS 인프라·STEP01~07·기존 ECR은 변경하지 않았다. 이 Pilot 단계에서는 OOM과 HPA OFF/ON 본실험을 실행하지 않았다.
+
+이 종료 상태는 Pilot 당시의 기록이다. 후속 [HPA OFF/ON 본실험](hpa-results-20261124.md)과
+[OOM 비교](oom-results-20261124.md), 최종 환경 정리 상태는 [README](../README.md)에 있다.
